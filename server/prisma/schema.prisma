@@ -1,0 +1,277 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+  
+}
+
+model Branch {
+  id             String      @id @default(cuid())
+  name           String
+  location       String
+  isHeadquarters Boolean     @default(false)
+  phone          String?
+  isActive       Boolean     @default(true)
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+  
+  users          User[]
+  inventory      Inventory[]
+  sales          Sale[]
+  transfersFrom  Transfer[]  @relation("TransferFrom")
+  transfersTo    Transfer[]  @relation("TransferTo")
+
+  @@index([isActive])
+}
+
+model User {
+  id                  String     @id @default(cuid())
+  name                String
+  email               String     @unique
+  phone               String?
+  password            String
+  role                Role       @default(MANAGER)
+  branchId            String?
+  isActive            Boolean    @default(true)
+  lastLoginAt         DateTime?
+  createdAt           DateTime   @default(now())
+  updatedAt           DateTime   @updatedAt
+  
+  branch              Branch?    @relation(fields: [branchId], references: [id])
+  sales               Sale[]
+  auditLogs           AuditLog[]
+  transfersRequested  Transfer[] @relation("TransferRequestedBy")
+  transfersApproved   Transfer[] @relation("TransferApprovedBy")
+  transfersDispatched Transfer[] @relation("TransferDispatchedBy")
+  transfersReceived   Transfer[] @relation("TransferReceivedBy")
+
+  @@index([email])
+  @@index([role, isActive])
+  @@index([branchId])
+}
+
+enum Role {
+  OWNER
+  ADMIN
+  MANAGER
+}
+
+model Product {
+  id                String         @id @default(cuid())
+  name              String
+  description       String?
+  partNumber        String?        @unique
+  category          String?
+  vehicleMake       String?
+  vehicleModel      String?
+  vehicleEngine     String?
+  costPrice         Decimal        @db.Decimal(10, 2)
+  minPrice          Decimal        @db.Decimal(10, 2)
+  sellingPrice      Decimal        @db.Decimal(10, 2)
+  lowStockThreshold Int            @default(5)
+  isActive          Boolean        @default(true)
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+  
+  inventory         Inventory[]
+  saleItems         SaleItem[]
+  transferItems     TransferItem[]
+
+  @@index([isActive])
+  @@index([vehicleMake, vehicleModel, vehicleEngine])
+  @@index([name])
+}
+
+model Inventory {
+  id        String   @id @default(cuid())
+  productId String
+  branchId  String
+  quantity  Int      @default(0)
+  version   Int      @default(0) // Optimistic locking
+  updatedAt DateTime @updatedAt
+  
+  product   Product  @relation(fields: [productId], references: [id])
+  branch    Branch   @relation(fields: [branchId], references: [id])
+
+  @@unique([productId, branchId])
+  @@index([branchId])
+  @@index([quantity]) // For low stock queries
+}
+
+model Sale {
+  id             String          @id @default(cuid())
+  receiptNumber  String          @unique
+  branchId       String
+  userId         String
+  customerName   String?
+  customerPhone  String?
+  subtotal       Decimal         @db.Decimal(10, 2)
+  discount       Decimal         @db.Decimal(10, 2) @default(0)
+  total          Decimal         @db.Decimal(10, 2)
+  isCredit       Boolean         @default(false)
+  creditStatus   CreditStatus?
+  isWalkIn       Boolean         @default(true)
+  reversalStatus ReversalStatus  @default(NONE)
+  isReversed     Boolean         @default(false)
+  reversalReason String?
+  reversedAt     DateTime?
+  reversedBy     String?
+  notes          String?
+  createdAt      DateTime        @default(now())
+
+  branch         Branch          @relation(fields: [branchId], references: [id])
+  user           User            @relation(fields: [userId], references: [id])
+  items          SaleItem[]
+  payments       SalePayment[]
+  creditPayments CreditPayment[]
+
+  @@index([branchId, createdAt])
+  @@index([isCredit, creditStatus])
+  @@index([receiptNumber])
+  @@index([createdAt])
+  @@index([isReversed])
+  @@index([reversalStatus])
+}
+
+enum PaymentMethod {
+  CASH
+  MPESA
+  CREDIT
+}
+
+enum CreditStatus {
+  PENDING
+  PARTIAL
+  PAID
+}
+
+enum ReversalStatus {
+  NONE
+  PENDING
+  APPROVED
+}
+
+model SaleItem {
+  id        String  @id @default(cuid())
+  saleId    String
+  productId String
+  quantity  Int
+  unitPrice Decimal @db.Decimal(10, 2)
+  total     Decimal @db.Decimal(10, 2)
+
+  sale      Sale    @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  product   Product @relation(fields: [productId], references: [id])
+
+  @@index([saleId])
+  @@index([productId])
+}
+
+model SalePayment {
+  id        String        @id @default(cuid())
+  saleId    String
+  method    PaymentMethod
+  amount    Decimal       @db.Decimal(10, 2)
+  reference String?
+  createdAt DateTime      @default(now())
+
+  sale      Sale          @relation(fields: [saleId], references: [id], onDelete: Cascade)
+
+  @@index([saleId])
+  @@index([method])
+  @@index([createdAt])
+}
+
+model CreditPayment {
+  id            String        @id @default(cuid())
+  saleId        String
+  amount        Decimal       @db.Decimal(10, 2)
+  paymentMethod PaymentMethod
+  receivedBy    String
+  notes         String?
+  createdAt     DateTime      @default(now())
+  
+  sale          Sale          @relation(fields: [saleId], references: [id], onDelete: Cascade)
+
+  @@index([saleId])
+  @@index([createdAt])
+}
+
+model Transfer {
+  id               String         @id @default(cuid())
+  transferNumber   String         @unique
+  fromBranchId     String
+  toBranchId       String
+  status           TransferStatus @default(REQUESTED)
+  requestedById    String
+  approvedById     String?
+  dispatchedById   String?
+  receivedById     String?
+  requestedAt      DateTime       @default(now())
+  approvedAt       DateTime?
+  dispatchedAt     DateTime?
+  receivedAt       DateTime?
+  parcelTracking   String?
+  notes            String?
+  discrepancyNotes String?
+  
+  fromBranch       Branch         @relation("TransferFrom", fields: [fromBranchId], references: [id])
+  toBranch         Branch         @relation("TransferTo", fields: [toBranchId], references: [id])
+  requestedBy      User           @relation("TransferRequestedBy", fields: [requestedById], references: [id])
+  approvedBy       User?          @relation("TransferApprovedBy", fields: [approvedById], references: [id])
+  dispatchedBy     User?          @relation("TransferDispatchedBy", fields: [dispatchedById], references: [id])
+  receivedBy       User?          @relation("TransferReceivedBy", fields: [receivedById], references: [id])
+  items            TransferItem[]
+
+  @@index([status])
+  @@index([fromBranchId, toBranchId])
+  @@index([requestedAt])
+}
+
+enum TransferStatus {
+  REQUESTED
+  APPROVED
+  PACKED
+  DISPATCHED
+  RECEIVED
+  RECEIVED_WITH_DISCREPANCY
+  CANCELLED
+}
+
+model TransferItem {
+  id                 String    @id @default(cuid())
+  transferId         String
+  productId          String
+  quantityRequested  Int
+  quantityApproved   Int?
+  quantityDispatched Int?
+  quantityReceived   Int?
+  discrepancyReason  String?
+  
+  transfer           Transfer  @relation(fields: [transferId], references: [id], onDelete: Cascade)
+  product            Product   @relation(fields: [productId], references: [id])
+
+  @@index([transferId])
+  @@index([productId])
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  userId     String
+  action     String
+  entityType String
+  entityId   String
+  oldValue   Json?
+  newValue   Json?
+  ipAddress  String?
+  createdAt  DateTime @default(now())
+  
+  user       User     @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([entityType, entityId])
+  @@index([action])
+  @@index([createdAt])
+}

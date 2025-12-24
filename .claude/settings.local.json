@@ -1,0 +1,25 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm run dev)",
+      "Bash(cat :*)",
+      "Bash(npm install :*)",
+      "Bash(find :*)",
+      "Bash(ls :*)",
+      "Bash(del tailwind.config.js postcss.config.js)",
+      "Bash(npm install:*)",
+      "Bash(ls:*)",
+      "Bash(cat:*)",
+      "Bash(npm run build:*)",
+      "Bash(npx prisma migrate dev:*)",
+      "Bash(npx prisma migrate deploy:*)",
+      "Bash(npx prisma generate:*)",
+      "Bash(npm start)",
+      "Bash(netstat:*)",
+      "Bash(findstr:*)",
+      "Bash(powershell -Command \"\\(Get-Item ''C:\\\\Users\\\\Julie\\\\pram-auto-spares\\\\client\\\\public\\\\sounds\\\\login-success.mp3''\\).Length / 1KB\")"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

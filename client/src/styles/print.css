@@ -1,0 +1,62 @@
+/* ============================================
+   PRINT STYLES FOR THERMAL RECEIPT
+   80mm thermal paper formatting
+   ============================================ */
+
+@media print {
+  /* CRITICAL: Hide everything except thermal receipt */
+  body > *:not(#thermal-receipt) {
+    display: none !important;
+  }
+
+  /* Show only the thermal receipt */
+  #thermal-receipt {
+    display: block !important;
+    visibility: visible !important;
+  }
+
+  /* Format page for thermal printer (80mm width) */
+  @page {
+    size: 80mm auto;
+    margin: 0;
+    padding: 0;
+  }
+
+  body {
+    background: white !important;
+    color: black !important;
+    margin: 0;
+    padding: 0;
+  }
+
+  /* Ensure all text is black */
+  * {
+    color: black !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  /* Preserve backgrounds for debt alert */
+  .bg-black {
+    background-color: black !important;
+  }
+
+  .text-white {
+    color: white !important;
+  }
+
+  /* Ensure borders print correctly */
+  .border-black {
+    border-color: black !important;
+  }
+
+  .border-dashed {
+    border-style: dashed !important;
+  }
+
+  /* Remove any shadows or effects */
+  * {
+    box-shadow: none !important;
+    text-shadow: none !important;
+  }
+}

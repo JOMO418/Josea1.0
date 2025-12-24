@@ -1,0 +1,46 @@
+# --- System Files ---
+.DS_Store
+Thumbs.db
+*.log
+logs
+*.gz
+
+# --- Dependencies ---
+# Never upload these; they are reinstalled via 'npm install'
+node_modules/
+/dist
+/build
+.vcode/
+
+# --- Environment & Secrets ---
+# VERY IMPORTANT: This protects your Postgres & JWT keys
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+.env.sample
+!.env.example 
+
+# --- IDE / Editors ---
+.vscode/*
+!.vscode/extensions.json
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# --- Database & Storage ---
+# If you use local sqlite or exports
+*.db
+*.sqlite
+/backups
+/uploads
+
+# --- TypeScript ---
+*.tsbuildinfo
+
+# --- Vite/Frontend ---
+.vite/
