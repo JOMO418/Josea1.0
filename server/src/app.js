@@ -11,6 +11,7 @@ const salesRoutes = require('./routes/sales');
 const transferRoutes = require('./routes/transfers');
 const dashboardRoutes = require('./routes/dashboard');
 const auditRoutes = require('./routes/audit');
+const adminRoutes = require('./routes/admin');
 
 // Import middleware (same directory level)
 const errorHandler = require('./middleware/errorHandler');
@@ -67,6 +68,7 @@ app.use('/api/sales', salesRoutes);
 app.use('/api/transfers', transferRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/audit', auditRoutes);
+app.use('/api/admin', adminRoutes);
 
 // 404 handler for undefined routes
 app.use((req, res, next) => {

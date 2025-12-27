@@ -107,6 +107,8 @@ export const api = {
       axiosInstance.get('/sales', { params }),
     get: (id: string) => axiosInstance.get(`/sales/${id}`),
     create: (data: any) => axiosInstance.post('/sales', data),
+    recordCreditPayment: (id: string, data: { amount: number; paymentMethod: string; notes?: string }) =>
+      axiosInstance.post(`/sales/${id}/payment`, data),
   },
 
   // Dashboard

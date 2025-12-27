@@ -38,6 +38,7 @@ interface DashboardState {
 
   // UI State
   isDrawerOpen: boolean;
+  isSidebarOpen: boolean;
 
   // Actions
   setBranch: (branchName: string, branchId?: string) => void;
@@ -54,6 +55,7 @@ interface DashboardState {
   // UI Actions
   toggleDrawer: () => void;
   setDrawerOpen: (open: boolean) => void;
+  setSidebarOpen: (value: boolean) => void;
 }
 
 // ===== ZUSTAND STORE =====
@@ -71,6 +73,7 @@ export const useStore = create<DashboardState>()(
       isAuthenticated: false,
       cart: [],
       isDrawerOpen: false,             // ✅ Drawer closed by default - Focus Mode
+      isSidebarOpen: true,             // ✅ Sidebar open by default
 
       // ===== ACTIONS =====
 
@@ -227,6 +230,13 @@ export const useStore = create<DashboardState>()(
        */
       setDrawerOpen: (open: boolean) => {
         set({ isDrawerOpen: open });
+      },
+
+      /**
+       * Set sidebar open state
+       */
+      setSidebarOpen: (value: boolean) => {
+        set({ isSidebarOpen: value });
       },
     }),
     {

@@ -7,10 +7,16 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { Toaster } from 'sonner';
 import { useStore } from './store/useStore';
 import MainLayout from './layouts/MainLayout';
+import AdminLayout from './layouts/AdminLayout';
+import AdminRoute from './components/auth/AdminRoute';
 import Dashboard from './pages/Dashboard';
 import POS from './pages/POS';
 import Sales from './pages/Sales';
+import Inventory from './pages/Inventory';
+import Restock from './pages/Restock';
+import DebtTracking from './pages/DebtTracking';
 import Login from './pages/Login';
+import CommandCenter from './pages/admin/CommandCenter';
 
 // ===== PROTECTED ROUTE WRAPPER =====
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -59,14 +65,29 @@ function App() {
           <Route index element={<Dashboard />} />
           <Route path="pos" element={<POS />} />
           <Route path="sales" element={<Sales />} />
+          <Route path="inventory" element={<Inventory />} />
+          <Route path="restock" element={<Restock />} />
+          <Route path="debts" element={<DebtTracking />} />
 
           {/* Future Routes */}
-          <Route path="inventory" element={<div className="p-8 text-white">Inventory (Coming Soon)</div>} />
           <Route path="transfers" element={<div className="p-8 text-white">Transfers (Coming Soon)</div>} />
           <Route path="credits" element={<div className="p-8 text-white">Credits (Coming Soon)</div>} />
 
           {/* 404 Redirect */}
           <Route path="*" element={<Navigate to="/" replace />} />
+        </Route>
+
+        {/* Admin Routes - Protected by Role-Based Access Control */}
+        <Route element={<AdminRoute />}>
+          <Route path="/admin" element={<AdminLayout />}>
+            <Route index element={<Navigate to="/admin/command-center" replace />} />
+            <Route path="command-center" element={<CommandCenter />} />
+            <Route path="inventory" element={<div className="text-white">Global Inventory (Coming Soon)</div>} />
+            <Route path="allocation" element={<div className="text-white">Stock Allocation (Coming Soon)</div>} />
+            <Route path="audit" element={<div className="text-white">Sales Audit (Coming Soon)</div>} />
+            <Route path="debts" element={<div className="text-white">Debt Manager (Coming Soon)</div>} />
+            <Route path="staff" element={<div className="text-white">Staff & Access (Coming Soon)</div>} />
+          </Route>
         </Route>
       </Routes>
     </BrowserRouter>

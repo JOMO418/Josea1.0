@@ -280,11 +280,13 @@ exports.receiveTransfer = async (req, res, next) => {
           update: {
             quantity: { increment: item.quantityReceived },
             version: { increment: 1 },
+            lastRestockAt: new Date(),
           },
           create: {
             productId: transferItem.productId,
             branchId: transfer.toBranchId,
             quantity: item.quantityReceived,
+            lastRestockAt: new Date(),
           },
         });
       }

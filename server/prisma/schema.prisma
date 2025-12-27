@@ -86,15 +86,17 @@ model Product {
 }
 
 model Inventory {
-  id        String   @id @default(cuid())
-  productId String
-  branchId  String
-  quantity  Int      @default(0)
-  version   Int      @default(0) // Optimistic locking
-  updatedAt DateTime @updatedAt
-  
-  product   Product  @relation(fields: [productId], references: [id])
-  branch    Branch   @relation(fields: [branchId], references: [id])
+  id            String    @id @default(cuid())
+  productId     String
+  branchId      String
+  quantity      Int       @default(0)
+  version       Int       @default(0) // Optimistic locking
+  lastSoldAt    DateTime?
+  lastRestockAt DateTime?
+  updatedAt     DateTime  @updatedAt
+
+  product       Product   @relation(fields: [productId], references: [id])
+  branch        Branch    @relation(fields: [branchId], references: [id])
 
   @@unique([productId, branchId])
   @@index([branchId])
@@ -139,6 +141,7 @@ model Sale {
 enum PaymentMethod {
   CASH
   MPESA
+  DENI
   CREDIT
 }
 

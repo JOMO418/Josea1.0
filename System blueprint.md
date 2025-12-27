@@ -1404,3 +1404,6 @@ This codebase is **production-ready** with a solid architectural foundation. The
 **Document Version:** 1.0
 **Last Audit:** 2025-12-22
 **Next Review:** Before any major feature additions or refactoring
+
+$env:CLAUDE_CODE_GIT_BASH_PATH = "C:\Users\Julie\AppData\Local\Programs\Git\bin\bash.exe"
+claude$

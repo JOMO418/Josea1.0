@@ -58,8 +58,17 @@ export default function Login() {
       // 5. UI State - Close Drawer for Full-Screen POS Focus Mode
       setDrawerOpen(false);
 
-      // 6. Secure Redirect - Direct to POS Terminal
-      navigate('/pos');
+      // 6. Role-Based Secure Redirect
+      if (user.role === 'ADMIN' || user.role === 'OWNER') {
+        // Admin/Owner: Redirect to Command Center
+        navigate('/admin/command-center');
+      } else if (user.role === 'MANAGER') {
+        // Manager: Redirect to Branch Dashboard
+        navigate('/');
+      } else {
+        // Fallback: Default to dashboard
+        navigate('/');
+      }
     } catch (err: any) {
       // Professional Error Handling Mapping
       setError(

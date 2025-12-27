@@ -17,7 +17,8 @@
       "Bash(npm start)",
       "Bash(netstat:*)",
       "Bash(findstr:*)",
-      "Bash(powershell -Command \"\\(Get-Item ''C:\\\\Users\\\\Julie\\\\pram-auto-spares\\\\client\\\\public\\\\sounds\\\\login-success.mp3''\\).Length / 1KB\")"
+      "Bash(powershell -Command \"\\(Get-Item ''C:\\\\Users\\\\Julie\\\\pram-auto-spares\\\\client\\\\public\\\\sounds\\\\login-success.mp3''\\).Length / 1KB\")",
+      "Bash(node:*)"
     ],
     "deny": [],
     "ask": []

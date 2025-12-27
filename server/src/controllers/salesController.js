@@ -101,6 +101,7 @@ exports.createSale = async (req, res) => {
           data: {
             quantity: { decrement: item.quantity },
             version: { increment: 1 }, // Optimistic locking
+            lastSoldAt: new Date(),
           },
         });
 
@@ -278,7 +279,7 @@ exports.createSale = async (req, res) => {
 // ===================================
 
 exports.getAllSales = async (req, res) => {
-  const { page = 1, limit = 50, branchId, startDate, endDate, search } = req.query;
+  const { page = 1, limit = 50, branchId, startDate, endDate, search, isCredit, creditStatus } = req.query;
   const skip = (parseInt(page) - 1) * parseInt(limit);
 
   try {
@@ -306,6 +307,23 @@ exports.getAllSales = async (req, res) => {
       ];
     }
 
+    // Credit filtering
+    if (isCredit !== undefined) {
+      where.isCredit = isCredit === 'true';
+    }
+
+    // Credit status filtering - supports array or single value
+    if (creditStatus) {
+      if (Array.isArray(creditStatus)) {
+        where.creditStatus = { in: creditStatus };
+      } else if (typeof creditStatus === 'string' && creditStatus.includes(',')) {
+        // Support comma-separated string
+        where.creditStatus = { in: creditStatus.split(',') };
+      } else {
+        where.creditStatus = creditStatus;
+      }
+    }
+
     // Exclude reversed sales by default
     where.isReversed = false;
 
@@ -328,10 +346,12 @@ exports.getAllSales = async (req, res) => {
             },
           },
           payments: true,
+          creditPayments: true,
           branch: {
             select: {
               id: true,
               name: true,
+              phone: true,
             },
           },
           user: {
@@ -511,5 +531,120 @@ exports.requestReversal = async (req, res) => {
   }
 };
 
-// Export remaining functions (to be added: reverse sale, record credit payment, etc.)
+// ===================================
+// RECORD CREDIT PAYMENT
+// ===================================
+
+exports.recordCreditPayment = async (req, res) => {
+  // 1. Debug Log: See exactly what the frontend sent
+  console.log('💰 Payment Request Received:', { 
+    id: req.params.id, 
+    body: req.body 
+  });
+
+  const { id } = req.params;
+  const { amount, paymentMethod } = req.body;
+  const userId = req.user.id;
+
+  try {
+    // 2. Validate Inputs
+    const paymentAmount = parseFloat(amount);
+    if (isNaN(paymentAmount) || paymentAmount <= 0) {
+      return res.status(400).json({ message: 'Invalid payment amount' });
+    }
+
+    const method = paymentMethod ? paymentMethod.toUpperCase() : '';
+    if (!['CASH', 'MPESA'].includes(method)) {
+      return res.status(400).json({ message: 'Invalid payment method. Use CASH or MPESA' });
+    }
+
+    // 3. Run Transaction
+    const result = await prisma.$transaction(async (tx) => {
+      // Fetch Sale with current payments
+      const sale = await tx.sale.findUnique({
+        where: { id },
+        include: { payments: true, creditPayments: true }
+      });
+
+      if (!sale) {
+        throw new Error('Sale not found');
+      }
+
+      // Calculate Remaining Balance
+      // CRITICAL FIX: Filter out 'CREDIT' method from initial payments.
+      // Only CASH and MPESA count as "Paid" initially.
+      const totalPaidInitial = sale.payments
+        .filter(p => p.method !== 'CREDIT')
+        .reduce((sum, p) => sum + Number(p.amount), 0);
+
+      const totalCreditPaid = sale.creditPayments.reduce((sum, p) => sum + Number(p.amount), 0);
+
+      const totalPaid = totalPaidInitial + totalCreditPaid;
+      const remainingBalance = Number(sale.total) - totalPaid;
+
+      // Debug Log to confirm the fix
+      console.log('Balance Calc:', {
+        total: Number(sale.total),
+        paidInitial: totalPaidInitial,
+        creditPaid: totalCreditPaid,
+        balance: remainingBalance
+      });
+
+      // Check for Overpayment (Allow 1.00 buffer for rounding diffs)
+      if (paymentAmount > remainingBalance + 1.0) {
+        throw new Error(`Amount (KES ${paymentAmount}) exceeds balance (KES ${remainingBalance})`);
+      }
+
+      // Create Payment Record
+      const creditPayment = await tx.creditPayment.create({
+        data: {
+          saleId: id,
+          amount: paymentAmount,
+          paymentMethod: method,
+          receivedBy: userId,
+          createdAt: new Date()
+        }
+      });
+
+      // Determine New Status
+      const newBalance = remainingBalance - paymentAmount;
+      // If balance is basically zero (less than 1 shilling), mark PAID
+      const newStatus = newBalance < 1 ? 'PAID' : 'PARTIAL';
+
+      // Update Sale Status
+      const updatedSale = await tx.sale.update({
+        where: { id },
+        data: { creditStatus: newStatus },
+        include: { creditPayments: true }
+      });
+
+      // Audit Log
+      await tx.auditLog.create({
+        data: {
+          userId,
+          action: 'DEBT_PAYMENT',
+          entityType: 'SALE',
+          entityId: id,
+          newValue: JSON.stringify({ amount: paymentAmount, method, newStatus })
+        }
+      });
+
+      return updatedSale;
+    });
+
+    // 4. Success Response
+    console.log('✅ Payment Success:', result.id);
+    res.json(result);
+
+  } catch (error) {
+    // 5. Error Handling (Prevents 500 Crash)
+    console.error('❌ Payment Logic Error:', error);
+    res.status(400).json({ 
+      message: error.message || 'Payment processing failed',
+      details: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    });
+  }
+};
+
+// Export remaining functions (to be added: reverse sale, etc.)
 module.exports = exports;

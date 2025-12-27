@@ -7,7 +7,7 @@ import { useState, useEffect } from 'react';
 import { format, isToday } from 'date-fns';
 import {
   Search, Calendar, Loader2, AlertCircle, ChevronDown,
-  Eye, RotateCcw, DollarSign, Smartphone, Users,
+  RotateCcw, DollarSign, Smartphone, Users,
   TrendingUp, X, Printer, Package
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -411,8 +411,8 @@ export default function Sales() {
                             )}
                             {payment.method === 'CREDIT' && (
                               <>
-                                <span className="text-xs font-bold text-rose-600">
-                                  CREDIT
+                                <span className="text-xs font-bold text-rose-600 uppercase">
+                                  DENI
                                 </span>
                               </>
                             )}
@@ -453,6 +453,7 @@ export default function Sales() {
                             <button
                               onClick={() => {
                                 setSelectedSale(sale);
+                                setAmountToReverse(sale.total.toString());
                                 setShowReversalModal(true);
                               }}
                               className="w-full flex items-center gap-2 px-4 py-3 text-sm text-red-600 hover:bg-red-50 transition-colors"
@@ -516,7 +517,7 @@ export default function Sales() {
               onClick={(e) => e.stopPropagation()}
               className="bg-white rounded-2xl shadow-2xl w-full max-w-lg p-8"
             >
-              <div className="flex items-center justify-between mb-6">
+              <div className="flex items-center justify-between mb-4">
                 <h3 className="text-2xl font-black text-zinc-900">
                   Request Sale Reversal
                 </h3>
@@ -530,6 +531,19 @@ export default function Sales() {
                 >
                   <X className="w-5 h-5 text-zinc-600" />
                 </button>
+              </div>
+
+              {/* Administrative Approval Notice */}
+              <div className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-xl flex items-start gap-3">
+                <AlertCircle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-sm font-bold text-amber-900">
+                    Pending Administrative Approval
+                  </p>
+                  <p className="text-xs text-amber-700 mt-1">
+                    This request will be reviewed by an administrator before the reversal is processed.
+                  </p>
+                </div>
               </div>
 
               <div className="mb-6 p-4 bg-zinc-100 rounded-xl">

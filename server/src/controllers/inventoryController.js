@@ -54,13 +54,15 @@ exports.adjustStock = async (req, res, next) => {
       }
 
       const inventory = await tx.inventory.update({
-        where: { 
+        where: {
           productId_branchId: { productId, branchId },
           version: oldInventory.version, // Optimistic locking
         },
-        data: { 
+        data: {
           quantity,
           version: { increment: 1 },
+          // Track restock only when quantity increases
+          ...(quantity > oldInventory.quantity && { lastRestockAt: new Date() }),
         },
         include: { product: true },
       });
