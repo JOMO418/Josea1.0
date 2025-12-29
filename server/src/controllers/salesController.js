@@ -292,11 +292,18 @@ exports.getAllSales = async (req, res) => {
       where.branchId = branchId;
     }
 
-    // Date range filtering
+    // Date range filtering - Supports full ISO timestamps for exact daily filtering
+    // Accepts: "2024-12-29" or "2024-12-29T00:00:00.000Z"
     if (startDate || endDate) {
       where.createdAt = {};
-      if (startDate) where.createdAt.gte = new Date(startDate);
-      if (endDate) where.createdAt.lte = new Date(endDate);
+      if (startDate) {
+        where.createdAt.gte = new Date(startDate);
+        console.log('📅 Sales filter - Start:', new Date(startDate).toISOString());
+      }
+      if (endDate) {
+        where.createdAt.lte = new Date(endDate);
+        console.log('📅 Sales filter - End:', new Date(endDate).toISOString());
+      }
     }
 
     // Search by receipt number or customer name
@@ -646,5 +653,397 @@ exports.recordCreditPayment = async (req, res) => {
   }
 };
 
-// Export remaining functions (to be added: reverse sale, etc.)
+// ===================================
+// PROCESS REVERSAL DECISION (ADMIN ONLY)
+// ===================================
+
+exports.processReversal = async (req, res) => {
+  const { id } = req.params;
+  const { decision, adminNotes } = req.body;
+  const userId = req.user.id;
+
+  // Validation
+  if (!decision || !['APPROVED', 'REJECTED'].includes(decision)) {
+    return res.status(400).json({
+      message: 'Invalid decision. Must be APPROVED or REJECTED'
+    });
+  }
+
+  // Verify Admin Role
+  if (!['ADMIN', 'OWNER'].includes(req.user.role)) {
+    return res.status(403).json({
+      message: 'Access denied. Admin role required.'
+    });
+  }
+
+  try {
+    const result = await prisma.$transaction(async (tx) => {
+      // Fetch the sale with items
+      const sale = await tx.sale.findUnique({
+        where: { id },
+        include: {
+          items: {
+            include: {
+              product: true,
+            },
+          },
+          branch: true,
+          user: true,
+        },
+      });
+
+      if (!sale) {
+        throw new Error('Sale not found');
+      }
+
+      // Check if sale is in PENDING reversal status
+      if (sale.reversalStatus !== 'PENDING') {
+        throw new Error('No pending reversal request for this sale');
+      }
+
+      // Check if already reversed
+      if (sale.isReversed) {
+        throw new Error('Sale has already been reversed');
+      }
+
+      if (decision === 'APPROVED') {
+        console.log('✅ Processing APPROVED reversal for sale:', id);
+
+        // INVENTORY RESTORATION: Iterate and increment stock
+        for (const item of sale.items) {
+          console.log(`📦 Restoring ${item.quantity}x ${item.product.name} to branch ${sale.branchId}`);
+
+          // Find inventory record
+          const inventory = await tx.inventory.findUnique({
+            where: {
+              productId_branchId: {
+                productId: item.productId,
+                branchId: sale.branchId,
+              },
+            },
+          });
+
+          if (!inventory) {
+            throw new Error(
+              `Inventory not found for ${item.product.name} at branch ${sale.branch.name}`
+            );
+          }
+
+          // Increment stock
+          const updatedInventory = await tx.inventory.update({
+            where: {
+              productId_branchId: {
+                productId: item.productId,
+                branchId: sale.branchId,
+              },
+            },
+            data: {
+              quantity: { increment: item.quantity },
+              version: { increment: 1 },
+            },
+          });
+
+          console.log(`✅ Stock restored: ${inventory.quantity} → ${updatedInventory.quantity}`);
+
+          // Create Stock Movement Record (Type: RETURN)
+          await tx.stockMovement.create({
+            data: {
+              productId: item.productId,
+              inventoryId: inventory.id,
+              branchId: sale.branchId,
+              userId: userId,
+              type: 'RETURN',
+              quantity: item.quantity, // Positive value for return
+              notes: `Manager Reversal Approved - Sale #${sale.receiptNumber}`,
+            },
+          });
+        }
+
+        // Update Sale: Mark as reversed
+        const updatedSale = await tx.sale.update({
+          where: { id },
+          data: {
+            isReversed: true,
+            reversalStatus: 'APPROVED',
+            reversedAt: new Date(),
+            reversedBy: userId,
+            notes: adminNotes?.trim() || null,
+          },
+          include: {
+            items: {
+              include: {
+                product: true,
+              },
+            },
+            branch: true,
+            user: true,
+          },
+        });
+
+        // Audit Log
+        await tx.auditLog.create({
+          data: {
+            userId,
+            action: 'REVERSAL_APPROVED',
+            entityType: 'SALE',
+            entityId: sale.id,
+            oldValue: JSON.stringify({
+              reversalStatus: 'PENDING',
+              isReversed: false,
+            }),
+            newValue: JSON.stringify({
+              reversalStatus: 'APPROVED',
+              isReversed: true,
+              adminNotes,
+            }),
+          },
+        });
+
+        return updatedSale;
+      } else {
+        // REJECTED
+        console.log('❌ Processing REJECTED reversal for sale:', id);
+
+        const updatedSale = await tx.sale.update({
+          where: { id },
+          data: {
+            reversalStatus: 'REJECTED',
+            notes: adminNotes?.trim() || null,
+          },
+          include: {
+            items: {
+              include: {
+                product: true,
+              },
+            },
+            branch: true,
+            user: true,
+          },
+        });
+
+        // Audit Log
+        await tx.auditLog.create({
+          data: {
+            userId,
+            action: 'REVERSAL_REJECTED',
+            entityType: 'SALE',
+            entityId: sale.id,
+            oldValue: JSON.stringify({ reversalStatus: 'PENDING' }),
+            newValue: JSON.stringify({
+              reversalStatus: 'REJECTED',
+              adminNotes,
+            }),
+          },
+        });
+
+        return updatedSale;
+      }
+    });
+
+    // Real-time notification
+    const io = req.app.get('io');
+    if (io) {
+      io.to(`branch:${result.branchId}`).emit('reversal.decision', {
+        saleId: result.id,
+        decision,
+        timestamp: new Date(),
+      });
+      io.to('overseer').emit('reversal.decision', {
+        saleId: result.id,
+        decision,
+        timestamp: new Date(),
+      });
+    }
+
+    res.json({
+      success: true,
+      message: `Reversal ${decision.toLowerCase()} successfully`,
+      sale: result,
+    });
+  } catch (error) {
+    console.error('Process reversal error:', error);
+    res.status(400).json({
+      message: error.message || 'Failed to process reversal',
+      error: process.env.NODE_ENV === 'development' ? error.stack : undefined,
+    });
+  }
+};
+
+// ===================================
+// GET SALES KPIs (ADMIN ONLY)
+// ===================================
+
+exports.getSalesKPIs = async (req, res) => {
+  const { startDate, endDate, branchId } = req.query;
+
+  try {
+    // Build where clause for filtering
+    const where = {};
+
+    // Date range filtering - Supports full ISO timestamps for exact daily filtering
+    if (startDate || endDate) {
+      where.createdAt = {};
+      // Parse ISO timestamps or date strings
+      if (startDate) {
+        const start = new Date(startDate);
+        where.createdAt.gte = start;
+        console.log('📅 Start Date Filter:', start.toISOString());
+      }
+      if (endDate) {
+        const end = new Date(endDate);
+        where.createdAt.lte = end;
+        console.log('📅 End Date Filter:', end.toISOString());
+      }
+    }
+
+    // Branch filtering
+    if (branchId) {
+      where.branchId = branchId;
+    }
+
+    // Exclude reversed sales
+    where.isReversed = false;
+
+    console.log('📊 Fetching KPIs with filters:', where);
+
+    // Fetch all sales with payments and branch info
+    const sales = await prisma.sale.findMany({
+      where,
+      include: {
+        payments: true,
+        branch: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+      },
+    });
+
+    console.log(`📦 Found ${sales.length} sales`);
+
+    // Initialize aggregation objects (Branch → Amount)
+    const cashByBranch = {};
+    const mpesaByBranch = {};
+    const creditByBranch = {};
+    const volumeByBranch = {};
+
+    // Aggregate payments by branch and method
+    for (const sale of sales) {
+      const branchName = sale.branch.name;
+
+      // Initialize branch if not exists
+      if (!volumeByBranch[branchName]) {
+        volumeByBranch[branchName] = 0;
+        cashByBranch[branchName] = 0;
+        mpesaByBranch[branchName] = 0;
+        creditByBranch[branchName] = 0;
+      }
+
+      // Increment volume
+      volumeByBranch[branchName]++;
+
+      // Aggregate payments by method
+      for (const payment of sale.payments) {
+        const amount = Number(payment.amount);
+
+        switch (payment.method) {
+          case 'CASH':
+            cashByBranch[branchName] += amount;
+            break;
+          case 'MPESA':
+            mpesaByBranch[branchName] += amount;
+            break;
+          case 'CREDIT':
+            creditByBranch[branchName] += amount;
+            break;
+        }
+      }
+    }
+
+    // Transform to new structure: { total, breakdown: [{ branch, amount }] }
+    const cashBreakdown = Object.entries(cashByBranch).map(([branch, amount]) => ({
+      branch,
+      amount: Number(amount.toFixed(2)),
+    }));
+
+    const mpesaBreakdown = Object.entries(mpesaByBranch).map(([branch, amount]) => ({
+      branch,
+      amount: Number(amount.toFixed(2)),
+    }));
+
+    const creditBreakdown = Object.entries(creditByBranch).map(([branch, amount]) => ({
+      branch,
+      amount: Number(amount.toFixed(2)),
+    }));
+
+    const volumeBreakdown = Object.entries(volumeByBranch).map(([branch, count]) => ({
+      branch,
+      count,
+    }));
+
+    // Calculate totals
+    const totalCash = cashBreakdown.reduce((sum, item) => sum + item.amount, 0);
+    const totalMpesa = mpesaBreakdown.reduce((sum, item) => sum + item.amount, 0);
+    const totalCredit = creditBreakdown.reduce((sum, item) => sum + item.amount, 0);
+    const totalVolume = volumeBreakdown.reduce((sum, item) => sum + item.count, 0);
+
+    console.log('✅ KPI Summary:', {
+      totalCash,
+      totalMpesa,
+      totalCredit,
+      totalVolume,
+    });
+
+    console.log('📊 Granular Breakdown Sample:', {
+      cash: cashBreakdown,
+      mpesa: mpesaBreakdown,
+      credit: creditBreakdown,
+    });
+
+    // NEW STRUCTURE: Grouped by Payment Method with Totals + Branch Breakdown
+    res.json({
+      success: true,
+      data: {
+        cash: {
+          total: Number(totalCash.toFixed(2)),
+          breakdown: cashBreakdown,
+        },
+        mpesa: {
+          total: Number(totalMpesa.toFixed(2)),
+          breakdown: mpesaBreakdown,
+        },
+        credit: {
+          total: Number(totalCredit.toFixed(2)),
+          breakdown: creditBreakdown,
+        },
+        volume: {
+          total: totalVolume,
+          breakdown: volumeBreakdown,
+        },
+        // Grand totals for convenience
+        totals: {
+          cash: Number(totalCash.toFixed(2)),
+          mpesa: Number(totalMpesa.toFixed(2)),
+          credit: Number(totalCredit.toFixed(2)),
+          revenue: Number((totalCash + totalMpesa + totalCredit).toFixed(2)),
+          volume: totalVolume,
+        },
+      },
+      filters: {
+        startDate: startDate || null,
+        endDate: endDate || null,
+        branchId: branchId || null,
+      },
+    });
+  } catch (error) {
+    console.error('Get KPIs error:', error);
+    res.status(500).json({
+      message: 'Failed to fetch KPI statistics',
+      error: process.env.NODE_ENV === 'development' ? error.stack : undefined,
+    });
+  }
+};
+
+// Export remaining functions
 module.exports = exports;

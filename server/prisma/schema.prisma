@@ -9,44 +9,46 @@ datasource db {
 }
 
 model Branch {
-  id             String      @id @default(cuid())
+  id             String          @id @default(cuid())
   name           String
   location       String
-  isHeadquarters Boolean     @default(false)
+  isHeadquarters Boolean         @default(false)
   phone          String?
-  isActive       Boolean     @default(true)
-  createdAt      DateTime    @default(now())
-  updatedAt      DateTime    @updatedAt
-  
+  isActive       Boolean         @default(true)
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
   users          User[]
   inventory      Inventory[]
   sales          Sale[]
-  transfersFrom  Transfer[]  @relation("TransferFrom")
-  transfersTo    Transfer[]  @relation("TransferTo")
+  transfersFrom  Transfer[]      @relation("TransferFrom")
+  transfersTo    Transfer[]      @relation("TransferTo")
+  stockMovements StockMovement[]
 
   @@index([isActive])
 }
 
 model User {
-  id                  String     @id @default(cuid())
+  id                  String          @id @default(cuid())
   name                String
-  email               String     @unique
+  email               String          @unique
   phone               String?
   password            String
-  role                Role       @default(MANAGER)
+  role                Role            @default(MANAGER)
   branchId            String?
-  isActive            Boolean    @default(true)
+  isActive            Boolean         @default(true)
   lastLoginAt         DateTime?
-  createdAt           DateTime   @default(now())
-  updatedAt           DateTime   @updatedAt
-  
-  branch              Branch?    @relation(fields: [branchId], references: [id])
+  createdAt           DateTime        @default(now())
+  updatedAt           DateTime        @updatedAt
+
+  branch              Branch?         @relation(fields: [branchId], references: [id])
   sales               Sale[]
   auditLogs           AuditLog[]
-  transfersRequested  Transfer[] @relation("TransferRequestedBy")
-  transfersApproved   Transfer[] @relation("TransferApprovedBy")
-  transfersDispatched Transfer[] @relation("TransferDispatchedBy")
-  transfersReceived   Transfer[] @relation("TransferReceivedBy")
+  transfersRequested  Transfer[]      @relation("TransferRequestedBy")
+  transfersApproved   Transfer[]      @relation("TransferApprovedBy")
+  transfersDispatched Transfer[]      @relation("TransferDispatchedBy")
+  transfersReceived   Transfer[]      @relation("TransferReceivedBy")
+  stockMovements      StockMovement[]
 
   @@index([email])
   @@index([role, isActive])
@@ -60,25 +62,26 @@ enum Role {
 }
 
 model Product {
-  id                String         @id @default(cuid())
+  id                String          @id @default(cuid())
   name              String
   description       String?
-  partNumber        String?        @unique
+  partNumber        String?         @unique
   category          String?
   vehicleMake       String?
   vehicleModel      String?
   vehicleEngine     String?
-  costPrice         Decimal        @db.Decimal(10, 2)
-  minPrice          Decimal        @db.Decimal(10, 2)
-  sellingPrice      Decimal        @db.Decimal(10, 2)
-  lowStockThreshold Int            @default(5)
-  isActive          Boolean        @default(true)
-  createdAt         DateTime       @default(now())
-  updatedAt         DateTime       @updatedAt
-  
+  costPrice         Decimal         @db.Decimal(10, 2)
+  minPrice          Decimal         @db.Decimal(10, 2)
+  sellingPrice      Decimal         @db.Decimal(10, 2)
+  lowStockThreshold Int             @default(5)
+  isActive          Boolean         @default(true)
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
   inventory         Inventory[]
   saleItems         SaleItem[]
   transferItems     TransferItem[]
+  stockMovements    StockMovement[]
 
   @@index([isActive])
   @@index([vehicleMake, vehicleModel, vehicleEngine])
@@ -86,21 +89,26 @@ model Product {
 }
 
 model Inventory {
-  id            String    @id @default(cuid())
-  productId     String
-  branchId      String
-  quantity      Int       @default(0)
-  version       Int       @default(0) // Optimistic locking
-  lastSoldAt    DateTime?
-  lastRestockAt DateTime?
-  updatedAt     DateTime  @updatedAt
+  id                String          @id @default(cuid())
+  productId         String
+  branchId          String
+  quantity          Int             @default(0)
+  sellingPrice      Decimal?        @db.Decimal(10, 2) // Branch-specific price override (nullable)
+  lowStockThreshold Int?            // Branch-specific threshold (nullable)
+  isActive          Boolean         @default(true) // Visibility toggle per branch
+  version           Int             @default(0) // Optimistic locking
+  lastSoldAt        DateTime?
+  lastRestockAt     DateTime?
+  updatedAt         DateTime        @updatedAt
 
-  product       Product   @relation(fields: [productId], references: [id])
-  branch        Branch    @relation(fields: [branchId], references: [id])
+  product           Product         @relation(fields: [productId], references: [id])
+  branch            Branch          @relation(fields: [branchId], references: [id])
+  stockMovements    StockMovement[]
 
   @@unique([productId, branchId])
   @@index([branchId])
   @@index([quantity]) // For low stock queries
+  @@index([isActive])
 }
 
 model Sale {
@@ -270,11 +278,34 @@ model AuditLog {
   newValue   Json?
   ipAddress  String?
   createdAt  DateTime @default(now())
-  
+
   user       User     @relation(fields: [userId], references: [id])
 
   @@index([userId])
   @@index([entityType, entityId])
   @@index([action])
+  @@index([createdAt])
+}
+
+model StockMovement {
+  id          String   @id @default(cuid())
+  productId   String
+  inventoryId String
+  branchId    String
+  userId      String
+  type        String   // ADJUSTMENT, SALE, TRANSFER_OUT, TRANSFER_IN, INITIAL_ADD
+  quantity    Int      // Can be positive (add) or negative (subtract)
+  notes       String?
+  createdAt   DateTime @default(now())
+
+  product     Product   @relation(fields: [productId], references: [id])
+  inventory   Inventory @relation(fields: [inventoryId], references: [id])
+  branch      Branch    @relation(fields: [branchId], references: [id])
+  user        User      @relation(fields: [userId], references: [id])
+
+  @@index([productId])
+  @@index([inventoryId])
+  @@index([branchId])
+  @@index([type])
   @@index([createdAt])
 }

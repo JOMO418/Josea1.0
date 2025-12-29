@@ -63,11 +63,11 @@ export default function Login() {
         // Admin/Owner: Redirect to Command Center
         navigate('/admin/command-center');
       } else if (user.role === 'MANAGER') {
-        // Manager: Redirect to Branch Dashboard
-        navigate('/');
+        // Manager: Redirect to Full Screen POS (Sales Engine Priority)
+        navigate('/pos');
       } else {
-        // Fallback: Default to dashboard
-        navigate('/');
+        // Fallback: Default to POS for sales-first workflow
+        navigate('/pos');
       }
     } catch (err: any) {
       // Professional Error Handling Mapping

@@ -17,6 +17,9 @@ import Restock from './pages/Restock';
 import DebtTracking from './pages/DebtTracking';
 import Login from './pages/Login';
 import CommandCenter from './pages/admin/CommandCenter';
+import GlobalInventory from './pages/admin/GlobalInventory';
+import StockAllocation from './pages/admin/StockAllocation';
+import SalesAudit from './pages/admin/SalesAudit';
 
 // ===== PROTECTED ROUTE WRAPPER =====
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -82,9 +85,9 @@ function App() {
           <Route path="/admin" element={<AdminLayout />}>
             <Route index element={<Navigate to="/admin/command-center" replace />} />
             <Route path="command-center" element={<CommandCenter />} />
-            <Route path="inventory" element={<div className="text-white">Global Inventory (Coming Soon)</div>} />
-            <Route path="allocation" element={<div className="text-white">Stock Allocation (Coming Soon)</div>} />
-            <Route path="audit" element={<div className="text-white">Sales Audit (Coming Soon)</div>} />
+            <Route path="inventory" element={<GlobalInventory />} />
+            <Route path="allocation" element={<StockAllocation />} />
+            <Route path="audit" element={<SalesAudit />} />
             <Route path="debts" element={<div className="text-white">Debt Manager (Coming Soon)</div>} />
             <Route path="staff" element={<div className="text-white">Staff & Access (Coming Soon)</div>} />
           </Route>

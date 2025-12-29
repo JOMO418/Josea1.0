@@ -18,7 +18,17 @@
       "Bash(netstat:*)",
       "Bash(findstr:*)",
       "Bash(powershell -Command \"\\(Get-Item ''C:\\\\Users\\\\Julie\\\\pram-auto-spares\\\\client\\\\public\\\\sounds\\\\login-success.mp3''\\).Length / 1KB\")",
-      "Bash(node:*)"
+      "Bash(node:*)",
+      "Bash(timeout /t 5)",
+      "Bash(curl:*)",
+      "Bash(timeout /t 3)",
+      "Bash(ping:*)",
+      "Bash(taskkill:*)",
+      "Bash(dir:*)",
+      "Bash(grep:*)",
+      "Bash(find:*)",
+      "Bash(npm run:*)",
+      "Bash(tasklist:*)"
     ],
     "deny": [],
     "ask": []

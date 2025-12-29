@@ -1,24 +1,26 @@
 import { useEffect, useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 import {
   Wallet,
   TrendingUp,
+  TrendingDown,
   AlertTriangle,
   Package,
   Activity,
-  DollarSign,
+  Crown,
 } from 'lucide-react';
 import {
   AreaChart,
   Area,
-  LineChart,
-  Line,
+  BarChart,
+  Bar,
   XAxis,
   YAxis,
   CartesianGrid,
   Tooltip,
   ResponsiveContainer,
-  Legend,
+  Cell,
+  ReferenceLine,
 } from 'recharts';
 import { formatKES, shortenNumber } from '../../utils/formatter';
 import { formatDistanceToNow } from 'date-fns';
@@ -30,195 +32,196 @@ import axios from '../../api/axios';
 
 interface Vitals {
   todayRevenue: number;
-  monthRevenue: number;
+  yesterdayRevenue: number;
   todayProfit: number;
-  monthProfit: number;
+  yesterdayProfit: number;
+  revenueTrend: number;
+  profitTrend: number;
   totalDebt: number;
   inventoryValue: number;
-}
-
-interface DailyStats {
-  date: string;
-  revenue: number;
-  cost: number;
-  profit: number;
-}
-
-interface BranchSalesByHour {
-  hour: number;
-  branch: string;
-  revenue: number;
-}
-
-interface RecentActivity {
-  type: string;
-  timestamp: string;
-  branch: string;
-  userName: string;
-  amount: number;
-  reference: string;
-}
-
-interface DangerZone {
   lowStockCount: number;
-  pendingReversals: number;
 }
 
-interface SystemStatus {
-  dbLatency: string;
-  activeUsers: number;
+interface ChartDataPoint {
+  name: string;
+  value: number;
+}
+
+interface BranchPerformanceItem {
+  name: string;
+  revenue: number;
+  transactions: number;
+}
+
+interface RecentActivityItem {
+  id: number;
+  receiptNumber: string;
+  total: number;
+  createdAt: string;
+  isReversed: boolean;
+  branch: string;
+  user: string;
+  itemSummary: string;
 }
 
 interface CommandCenterData {
   vitals: Vitals;
-  dailyStats: DailyStats[];
-  branchSalesByHour: BranchSalesByHour[];
-  recentActivity: RecentActivity[];
-  dangerZone: DangerZone;
-  systemStatus: SystemStatus;
+  chartData: ChartDataPoint[];
+  branchPerformance: BranchPerformanceItem[];
+  recentActivity: RecentActivityItem[];
   error?: boolean;
   errorMessage?: string;
 }
 
 // ============================================
-// HOLOGRAPHIC VITALS CARD
+// VITAL CARD WITH TREND PILL (Clickable)
 // ============================================
 
 interface VitalCardProps {
-  icon: React.ElementType;
   label: string;
   value: number;
+  trend: number;
+  icon: React.ElementType;
   format?: 'currency' | 'number';
-  trend?: number[];
-  accentColor?: string;
-  danger?: boolean;
+  link?: string;
+  isAlert?: boolean;
 }
 
-const VitalCard = ({
-  icon: Icon,
-  label,
-  value,
-  format = 'currency',
-  accentColor = 'violet',
-  danger = false,
-}: VitalCardProps) => {
-  const formattedValue = format === 'currency' ? formatKES(value, false) : value.toLocaleString();
-  const borderColor = danger
-    ? 'border-rose-500/50'
-    : accentColor === 'emerald'
-    ? 'border-emerald-500/50'
-    : accentColor === 'amber'
-    ? 'border-amber-500/50'
-    : 'border-violet-500/50';
+const VitalCard = ({ label, value, trend, icon: Icon, format = 'currency', link, isAlert }: VitalCardProps) => {
+  const formattedValue = format === 'currency' ? formatKES(value) : value.toLocaleString();
+  const isPositive = trend >= 0;
+  const TrendIcon = isPositive ? TrendingUp : TrendingDown;
+
+  const CardContent = (
+    <motion.div
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.3 }}
+      whileHover={link ? { scale: 1.02 } : {}}
+      className={`bg-zinc-900 border border-zinc-800 rounded-xl p-6 relative ${
+        link ? 'cursor-pointer hover:border-zinc-700 transition-all' : ''
+      }`}
+    >
+      {/* Submarine Radar - Pulsing Alert Indicator */}
+      {isAlert && value > 0 && (
+        <div className="absolute top-4 right-4">
+          <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse" />
+        </div>
+      )}
+
+      <div className="flex items-center justify-between mb-4">
+        <Icon className="w-5 h-5 text-zinc-500" />
+        <div
+          className={`px-2 py-1 rounded-md flex items-center gap-1 ${
+            isPositive ? 'bg-emerald-500/10 text-emerald-500' : 'bg-red-500/10 text-red-500'
+          }`}
+        >
+          <TrendIcon className="w-3 h-3" />
+          <span className="text-xs font-bold">
+            {isPositive ? '+' : ''}
+            {trend.toFixed(1)}%
+          </span>
+        </div>
+      </div>
+
+      <p className="text-xs text-zinc-500 uppercase tracking-wider mb-2">{label}</p>
+      <p className="text-2xl font-bold text-white font-mono">{formattedValue}</p>
+    </motion.div>
+  );
+
+  if (link) {
+    return (
+      <a href={link} className="block">
+        {CardContent}
+      </a>
+    );
+  }
+
+  return CardContent;
+};
+
+// ============================================
+// DAILY PERFORMANCE CHART (Last 7 Days)
+// ============================================
+
+interface DailyPerformanceChartProps {
+  data: ChartDataPoint[];
+}
+
+const DailyPerformanceChart = ({ data }: DailyPerformanceChartProps) => {
+  // Custom tooltip
+  const CustomTooltip = ({ active, payload }: any) => {
+    if (!active || !payload || payload.length === 0) return null;
+
+    return (
+      <div className="bg-black border border-zinc-700 rounded-lg p-3 shadow-xl">
+        <p className="text-xs text-zinc-400 mb-2">{payload[0]?.payload?.name}</p>
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-zinc-500">Revenue:</span>
+          <span className="text-sm font-bold text-white font-mono">
+            {formatKES(payload[0]?.value || 0)}
+          </span>
+        </div>
+      </div>
+    );
+  };
+
+  if (!data || data.length === 0) {
+    return (
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="bg-zinc-900 border border-zinc-800 rounded-xl p-6 h-[400px] flex items-center justify-center"
+      >
+        <p className="text-zinc-600">No chart data available</p>
+      </motion.div>
+    );
+  }
 
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
-      className={`bg-slate-800/50 backdrop-blur border border-slate-700/50 rounded-2xl p-6 relative overflow-hidden group hover:${borderColor} transition-colors`}
-    >
-      {/* Glow Effect */}
-      <div className="absolute inset-0 bg-gradient-to-br from-violet-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-
-      {/* Icon Circle */}
-      <div
-        className={`w-12 h-12 rounded-xl bg-gradient-to-br ${
-          danger
-            ? 'from-rose-500/20 to-rose-600/10'
-            : accentColor === 'emerald'
-            ? 'from-emerald-500/20 to-emerald-600/10'
-            : accentColor === 'amber'
-            ? 'from-amber-500/20 to-amber-600/10'
-            : 'from-violet-500/20 to-violet-600/10'
-        } flex items-center justify-center mb-4`}
-      >
-        <Icon
-          className={`w-6 h-6 ${
-            danger
-              ? 'text-rose-400'
-              : accentColor === 'emerald'
-              ? 'text-emerald-400'
-              : accentColor === 'amber'
-              ? 'text-amber-400'
-              : 'text-violet-400'
-          }`}
-        />
-      </div>
-
-      {/* Label */}
-      <p className="text-xs uppercase tracking-wider text-slate-400 mb-2">{label}</p>
-
-      {/* Value */}
-      <p className="text-3xl font-bold text-white font-mono">{formattedValue}</p>
-    </motion.div>
-  );
-};
-
-// ============================================
-// PROFIT WEDGE CHART
-// ============================================
-
-interface ProfitWedgeProps {
-  data: DailyStats[];
-}
-
-const ProfitWedge = ({ data }: ProfitWedgeProps) => {
-  return (
-    <motion.div
-      initial={{ opacity: 0, scale: 0.95 }}
-      animate={{ opacity: 1, scale: 1 }}
-      className="bg-slate-800/50 backdrop-blur border border-slate-700/50 rounded-2xl p-6"
+      transition={{ duration: 0.3, delay: 0.1 }}
+      className="bg-zinc-900 border border-zinc-800 rounded-xl p-6"
+      key={`chart-${data.length}-${data[0]?.value || 0}`}
     >
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h3 className="text-xl font-bold text-white">The Profit Wedge</h3>
-          <p className="text-sm text-slate-400">Last 7 Days Revenue vs Cost</p>
+          <h3 className="text-lg font-bold text-white">Daily Performance</h3>
+          <p className="text-sm text-zinc-500">Revenue Trend (Last 7 Days)</p>
         </div>
-        <Activity className="w-6 h-6 text-emerald-400" />
+        <Activity className="w-5 h-5 text-emerald-500" />
       </div>
 
-      <ResponsiveContainer width="100%" height={300}>
-        <AreaChart data={data}>
+      <ResponsiveContainer width="100%" height={320}>
+        <AreaChart data={data} key={`area-${data.length}`}>
           <defs>
-            <linearGradient id="colorRevenue" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="5%" stopColor="#34d399" stopOpacity={0.3} />
-              <stop offset="95%" stopColor="#34d399" stopOpacity={0} />
-            </linearGradient>
-            <linearGradient id="colorCost" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="5%" stopColor="#f43f5e" stopOpacity={0.2} />
-              <stop offset="95%" stopColor="#f43f5e" stopOpacity={0} />
+            <linearGradient id="revenueGradient" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="5%" stopColor="#10b981" stopOpacity={0.3} />
+              <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
             </linearGradient>
           </defs>
-          <CartesianGrid strokeDasharray="3 3" stroke="#334155" opacity={0.3} />
-          <XAxis dataKey="date" stroke="#94a3b8" fontSize={12} />
-          <YAxis stroke="#94a3b8" fontSize={12} tickFormatter={(value) => shortenNumber(value || 0)} />
-          <Tooltip
-            contentStyle={{
-              backgroundColor: '#1e293b',
-              border: '1px solid #334155',
-              borderRadius: '8px',
-              color: '#fff',
-            }}
-            formatter={(value: number | undefined) => formatKES(value || 0)}
+          <CartesianGrid strokeDasharray="3 3" stroke="#27272a" vertical={false} />
+          <XAxis
+            dataKey="name"
+            stroke="#52525b"
+            fontSize={11}
+            tickLine={false}
           />
-          <Legend />
+          <YAxis
+            stroke="#52525b"
+            fontSize={11}
+            tickLine={false}
+            tickFormatter={(value) => shortenNumber(value)}
+          />
+          <Tooltip content={<CustomTooltip />} />
           <Area
             type="monotone"
-            dataKey="revenue"
-            stroke="#34d399"
+            dataKey="value"
+            stroke="#10b981"
             strokeWidth={2}
-            fillOpacity={1}
-            fill="url(#colorRevenue)"
-            name="Revenue"
-          />
-          <Area
-            type="monotone"
-            dataKey="cost"
-            stroke="#f43f5e"
-            strokeWidth={2}
-            fillOpacity={1}
-            fill="url(#colorCost)"
-            name="Cost"
+            fill="url(#revenueGradient)"
           />
         </AreaChart>
       </ResponsiveContainer>
@@ -227,162 +230,236 @@ const ProfitWedge = ({ data }: ProfitWedgeProps) => {
 };
 
 // ============================================
-// LIVE TRANSACTION STREAM
+// LIVE TICKER (Gold Highlighting for > 5000)
 // ============================================
 
-interface LiveStreamProps {
-  activities: RecentActivity[];
+interface LiveTickerProps {
+  data: RecentActivityItem[];
 }
 
-const LiveStream = ({ activities }: LiveStreamProps) => {
+const LiveTicker = ({ data }: LiveTickerProps) => {
+  if (!data || data.length === 0) {
+    return (
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="bg-zinc-900 border border-zinc-800 rounded-xl p-6 h-[400px] flex items-center justify-center"
+      >
+        <p className="text-zinc-600">No recent activity</p>
+      </motion.div>
+    );
+  }
+
   return (
     <motion.div
-      initial={{ opacity: 0, x: 20 }}
-      animate={{ opacity: 1, x: 0 }}
-      className="bg-slate-800/50 backdrop-blur border border-slate-700/50 rounded-2xl p-6 h-full"
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.3, delay: 0.2 }}
+      className="bg-zinc-900 border border-zinc-800 rounded-xl p-6"
     >
-      <div className="flex items-center gap-3 mb-6">
-        <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-        <h3 className="text-xl font-bold text-white">Live Feed</h3>
+      <div className="mb-4">
+        <h3 className="text-lg font-bold text-white">Live Ticker</h3>
+        <p className="text-sm text-zinc-500">Recent transactions</p>
       </div>
 
-      <div className="space-y-3 overflow-y-auto max-h-[600px]">
-        <AnimatePresence>
-          {activities.map((activity, index) => (
+      <div className="max-h-[400px] overflow-y-auto space-y-2 pr-2">
+        {data.map((sale, index) => {
+          const isGold = sale.total > 5000;
+
+          return (
             <motion.div
-              key={activity.reference}
-              initial={{ opacity: 0, y: -20 }}
-              animate={{ opacity: 1, y: 0 }}
+              key={sale.id}
+              initial={{ opacity: 0, x: -10 }}
+              animate={{ opacity: 1, x: 0 }}
               transition={{ delay: index * 0.05 }}
-              className="bg-slate-900/50 border border-slate-700/30 rounded-lg p-3 hover:border-violet-500/30 transition-colors"
+              className={`p-3 rounded-lg border transition-all ${
+                isGold
+                  ? 'border-l-4 border-amber-500 bg-amber-500/5'
+                  : 'border-l-4 border-transparent bg-zinc-800/50'
+              }`}
             >
-              <div className="flex items-start justify-between gap-2">
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs text-slate-400 mb-1">
-                    {formatDistanceToNow(new Date(activity.timestamp), { addSuffix: true })}
-                  </p>
-                  <p className="text-sm text-white">
-                    <span className="font-semibold text-violet-400">{activity.branch}</span> •{' '}
-                    {activity.userName}
-                  </p>
-                  <p className="text-xs text-slate-500 mt-1">{activity.reference}</p>
+              <div className="flex items-start justify-between mb-2">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs px-2 py-0.5 bg-zinc-800 text-zinc-400 rounded font-mono">
+                    {sale.branch}
+                  </span>
+                  {sale.isReversed && (
+                    <span className="text-xs px-2 py-0.5 bg-red-500/20 text-red-400 rounded font-mono">
+                      REV
+                    </span>
+                  )}
                 </div>
-                <div className="text-right">
-                  <p className="text-sm font-mono font-bold text-emerald-400">
-                    {shortenNumber(activity.amount)}
-                  </p>
-                </div>
+                <span
+                  className={`text-sm font-bold font-mono ${
+                    isGold ? 'text-amber-500' : 'text-emerald-500'
+                  }`}
+                >
+                  {formatKES(sale.total)}
+                </span>
               </div>
+
+              <p className="text-xs text-zinc-500 truncate mb-1">{sale.itemSummary}</p>
+              <p className="text-xs text-zinc-600">
+                {formatDistanceToNow(new Date(sale.createdAt), { addSuffix: true })}
+              </p>
             </motion.div>
-          ))}
-        </AnimatePresence>
+          );
+        })}
       </div>
     </motion.div>
   );
 };
 
 // ============================================
-// BRANCH PERFORMANCE RACE CHART
+// BRANCH PILLARS (Bar Chart with Leader Badge)
 // ============================================
 
-interface BranchRaceProps {
-  data: BranchSalesByHour[];
+interface BranchPillarsProps {
+  data: BranchPerformanceItem[];
 }
 
-const BranchRace = ({ data }: BranchRaceProps) => {
-  // Transform data from [ { hour: 9, branch: 'Nairobi', revenue: 5000 }, ... ]
-  // to [ { time: '09:00', Nairobi: 5000, Kiserian: 2000 }, ... ]
-  const transformedData = (() => {
-    const hourMap = new Map<number, Record<string, any>>();
+const BranchPillars = ({ data }: BranchPillarsProps) => {
+  if (!data || data.length === 0) {
+    return (
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="bg-zinc-900 border border-zinc-800 rounded-xl p-6 h-[300px] flex items-center justify-center"
+      >
+        <p className="text-zinc-600">No branch data available</p>
+      </motion.div>
+    );
+  }
 
-    data.forEach(({ hour, branch, revenue }) => {
-      if (!hourMap.has(hour)) {
-        hourMap.set(hour, { time: `${hour.toString().padStart(2, '0')}:00` });
-      }
-      const hourData = hourMap.get(hour)!;
-      hourData[branch] = Number(revenue);
-    });
+  // Gold & Steel Calculations
+  const maxRevenue = Math.max(...data.map((b) => b.revenue));
+  const totalRevenue = data.reduce((sum, b) => sum + b.revenue, 0);
+  const avgRevenue = totalRevenue / data.length;
 
-    return Array.from(hourMap.values()).sort((a, b) => {
-      return parseInt(a.time) - parseInt(b.time);
-    });
-  })();
+  // Custom label showing revenue numbers
+  const CustomLabel = (props: any) => {
+    const { x, y, width, value } = props;
+    const isWinner = value === maxRevenue && maxRevenue > 0;
 
-  // Get unique branches for lines
-  const branches = Array.from(new Set(data.map((d) => d.branch)));
+    if (value === 0) return null;
 
-  // Color palette for branches
-  const branchColors: Record<string, string> = {
-    Nairobi: '#8b5cf6',
-    Kiserian: '#06b6d4',
-    Headquarters: '#f59e0b',
+    return (
+      <g>
+        {/* Crown for winner */}
+        {isWinner && (
+          <Crown
+            x={x + width / 2 - 8}
+            y={y - 28}
+            className="w-4 h-4 fill-amber-500 stroke-amber-500"
+          />
+        )}
+        {/* Revenue value */}
+        <text
+          x={x + width / 2}
+          y={y - 8}
+          fill={isWinner ? '#ffffff' : '#a1a1aa'}
+          textAnchor="middle"
+          fontSize={11}
+          fontWeight={isWinner ? 'bold' : 'normal'}
+          className="font-mono"
+        >
+          {shortenNumber(value)}
+        </text>
+      </g>
+    );
   };
 
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
-      className="bg-slate-800/50 backdrop-blur border border-slate-700/50 rounded-2xl p-6"
+      transition={{ duration: 0.3, delay: 0.3 }}
+      className="bg-zinc-900 border border-zinc-800 rounded-xl p-6"
     >
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h3 className="text-xl font-bold text-white">Branch Performance Race</h3>
-          <p className="text-sm text-slate-400">Hourly sales by branch (Today)</p>
+          <h3 className="text-lg font-bold text-white">Branch Performance</h3>
+          <p className="text-sm text-zinc-500">Today's revenue by location</p>
         </div>
-        <TrendingUp className="w-6 h-6 text-violet-400" />
+        <Package className="w-5 h-5 text-blue-500" />
       </div>
 
-      <ResponsiveContainer width="100%" height={250}>
-        <LineChart data={transformedData}>
-          <CartesianGrid strokeDasharray="3 3" stroke="#334155" opacity={0.3} />
-          <XAxis dataKey="time" stroke="#94a3b8" fontSize={12} />
-          <YAxis stroke="#94a3b8" fontSize={12} tickFormatter={(value) => shortenNumber(value || 0)} />
+      <ResponsiveContainer width="100%" height={220}>
+        <BarChart data={data}>
+          <CartesianGrid strokeDasharray="3 3" stroke="#27272a" vertical={false} />
+          <XAxis
+            dataKey="name"
+            stroke="#52525b"
+            fontSize={11}
+            tickLine={false}
+          />
+          <YAxis
+            stroke="#52525b"
+            fontSize={11}
+            tickLine={false}
+            tickFormatter={(value) => shortenNumber(value)}
+          />
+
+          {/* Average Revenue Reference Line */}
+          {avgRevenue > 0 && (
+            <ReferenceLine
+              y={avgRevenue}
+              stroke="#71717a"
+              strokeDasharray="3 3"
+              label={{
+                value: 'AVG',
+                position: 'right',
+                fill: '#71717a',
+                fontSize: 10,
+              }}
+            />
+          )}
+
           <Tooltip
             contentStyle={{
-              backgroundColor: '#1e293b',
-              border: '1px solid #334155',
+              backgroundColor: '#000',
+              border: '1px solid #3f3f46',
               borderRadius: '8px',
-              color: '#fff',
             }}
-            formatter={(value: number | undefined) => formatKES(value || 0)}
+            cursor={{ fill: 'rgba(255, 255, 255, 0.05)' }}
+            formatter={(value: any, name: string, props: any) => {
+              const transactions = props.payload.transactions;
+              return [
+                <div key="tooltip" className="space-y-1">
+                  <div className="flex items-center justify-between gap-4">
+                    <span className="text-xs text-zinc-400">Revenue:</span>
+                    <span className="text-sm font-bold text-white font-mono">
+                      {formatKES(value)}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between gap-4">
+                    <span className="text-xs text-zinc-400">Transactions:</span>
+                    <span className="text-sm font-bold text-white font-mono">
+                      {transactions}
+                    </span>
+                  </div>
+                </div>,
+                '',
+              ];
+            }}
           />
-          <Legend />
-          {branches.map((branch, index) => (
-            <Line
-              key={branch}
-              type="monotone"
-              dataKey={branch}
-              stroke={branchColors[branch] || `hsl(${index * 60}, 70%, 60%)`}
-              strokeWidth={3}
-              dot={{ r: 4 }}
-              activeDot={{ r: 6 }}
-            />
-          ))}
-        </LineChart>
+
+          {/* The Gold & Steel Bars */}
+          <Bar dataKey="revenue" radius={[8, 8, 0, 0]} label={<CustomLabel />}>
+            {data.map((entry, index) => {
+              const isWinner = entry.revenue === maxRevenue && maxRevenue > 0;
+              return (
+                <Cell
+                  key={`cell-${index}`}
+                  fill={isWinner ? '#f59e0b' : '#3f3f46'}
+                  opacity={isWinner ? 1.0 : 0.8}
+                />
+              );
+            })}
+          </Bar>
+        </BarChart>
       </ResponsiveContainer>
     </motion.div>
-  );
-};
-
-// ============================================
-// SYSTEM HUD
-// ============================================
-
-interface SystemHUDProps {
-  systemStatus: SystemStatus;
-}
-
-const SystemHUD = ({ systemStatus }: SystemHUDProps) => {
-  return (
-    <div className="mt-6 text-xs font-mono text-slate-500 flex items-center gap-6">
-      <span className="flex items-center gap-2">
-        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-        System Status: ONLINE
-      </span>
-      <span>DB Latency: {systemStatus.dbLatency}</span>
-      <span>Active Users: {systemStatus.activeUsers}</span>
-      <span>DB: Connected</span>
-    </div>
   );
 };
 
@@ -392,20 +469,22 @@ const SystemHUD = ({ systemStatus }: SystemHUDProps) => {
 
 const LoadingSkeleton = () => {
   return (
-    <div className="grid grid-cols-12 gap-6 p-6">
-      {[1, 2, 3, 4].map((i) => (
-        <div
-          key={i}
-          className="col-span-3 bg-slate-800/50 rounded-2xl p-6 animate-pulse"
-        >
-          <div className="w-12 h-12 bg-slate-700 rounded-xl mb-4" />
-          <div className="h-3 bg-slate-700 rounded w-20 mb-2" />
-          <div className="h-8 bg-slate-700 rounded w-32" />
-        </div>
-      ))}
-      <div className="col-span-8 bg-slate-800/50 rounded-2xl h-96 animate-pulse" />
-      <div className="col-span-4 bg-slate-800/50 rounded-2xl h-96 animate-pulse" />
-      <div className="col-span-12 bg-slate-800/50 rounded-2xl h-80 animate-pulse" />
+    <div className="p-6 space-y-6">
+      <div className="grid grid-cols-12 gap-6">
+        {[1, 2, 3, 4].map((i) => (
+          <div key={i} className="col-span-3 bg-zinc-900 rounded-xl p-6 animate-pulse">
+            <div className="h-4 bg-zinc-800 rounded w-20 mb-4" />
+            <div className="h-8 bg-zinc-800 rounded w-32" />
+          </div>
+        ))}
+      </div>
+
+      <div className="grid grid-cols-12 gap-6">
+        <div className="col-span-9 bg-zinc-900 rounded-xl h-[400px] animate-pulse" />
+        <div className="col-span-3 bg-zinc-900 rounded-xl h-[400px] animate-pulse" />
+      </div>
+
+      <div className="bg-zinc-900 rounded-xl h-[300px] animate-pulse" />
     </div>
   );
 };
@@ -421,21 +500,45 @@ export default function CommandCenter() {
 
   const fetchStats = async () => {
     try {
-      setLoading(true);
-      const response = await axios.get('/admin/stats');
+      console.log('\nðŸŒ FETCHING COMMAND CENTER DATA...');
+      console.log('URL:', '/admin/mission-control');
 
-      // Check if backend returned error flag (safe fallback)
+      setLoading(true);
+      const response = await axios.get('/admin/mission-control');
+
+      console.log('\nðŸ“¥ RAW RESPONSE:');
+      console.log('Status:', response.status);
+      console.log('Data:', response.data);
+      console.log('Data Type:', typeof response.data);
+      console.log('Is Object:', response.data !== null && typeof response.data === 'object');
+
       if (response.data?.error) {
+        console.error('\nâŒ BACKEND ERROR:');
+        console.error('Message:', response.data.errorMessage);
         setError(response.data?.errorMessage || 'System temporarily unavailable');
         setData(null);
       } else {
-        setData(response.data);
+        console.log('\nâœ… DATA RECEIVED SUCCESSFULLY:');
+        console.log('Vitals Object:', response.data?.vitals);
+        console.log('  - todayRevenue:', response.data?.vitals?.todayRevenue);
+        console.log('  - todayProfit:', response.data?.vitals?.todayProfit);
+        console.log('  - lowStockCount:', response.data?.vitals?.lowStockCount);
+        console.log('\nChart Data Array:', response.data?.chartData);
+        console.log('  - Length:', response.data?.chartData?.length);
+        console.log('  - First Item:', response.data?.chartData?.[0]);
+        console.log('\nBranch Performance:', response.data?.branchPerformance?.length, 'branches');
+        console.log('Recent Activity:', response.data?.recentActivity?.length, 'items');
+
+        setData(response.data || null);
         setError(null);
       }
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Failed to load dashboard data');
+      console.error('\nâŒ FETCH ERROR:');
+      console.error('Error:', err);
+      console.error('Response:', err.response);
+      console.error('Message:', err.message);
+      setError(err.response?.data?.message || 'Failed to load Command Center data');
       setData(null);
-      console.error('Command Center error:', err);
     } finally {
       setLoading(false);
     }
@@ -443,15 +546,17 @@ export default function CommandCenter() {
 
   useEffect(() => {
     fetchStats();
-
-    // Refresh every minute
-    const interval = setInterval(fetchStats, 60000);
+    const interval = setInterval(fetchStats, 60000); // Refresh every 60 seconds
     return () => clearInterval(interval);
   }, []);
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-slate-900">
+      <div className="min-h-screen bg-black">
+        <div className="bg-zinc-950 border-b border-zinc-800 px-6 py-4">
+          <h1 className="text-2xl font-bold text-white">Command Center</h1>
+          <p className="text-sm text-zinc-500">Loading real-time data...</p>
+        </div>
         <LoadingSkeleton />
       </div>
     );
@@ -459,14 +564,14 @@ export default function CommandCenter() {
 
   if (error || !data) {
     return (
-      <div className="min-h-screen bg-slate-900 flex items-center justify-center">
-        <div className="text-center">
-          <AlertTriangle className="w-16 h-16 text-rose-500 mx-auto mb-4" />
+      <div className="min-h-screen bg-black flex items-center justify-center">
+        <div className="text-center max-w-md">
+          <AlertTriangle className="w-16 h-16 text-red-500 mx-auto mb-4" />
           <h2 className="text-2xl font-bold text-white mb-2">System Error</h2>
-          <p className="text-slate-400">{error || 'Failed to load data'}</p>
+          <p className="text-zinc-500 mb-6">{error || 'Failed to load data'}</p>
           <button
             onClick={fetchStats}
-            className="mt-4 px-6 py-2 bg-violet-600 hover:bg-violet-700 text-white rounded-lg transition-colors"
+            className="px-6 py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg transition-colors font-semibold"
           >
             Retry
           </button>
@@ -475,102 +580,105 @@ export default function CommandCenter() {
     );
   }
 
+  const vitals = data?.vitals || {
+    todayRevenue: 0,
+    yesterdayRevenue: 0,
+    todayProfit: 0,
+    yesterdayProfit: 0,
+    revenueTrend: 0,
+    profitTrend: 0,
+    totalDebt: 0,
+    inventoryValue: 0,
+    lowStockCount: 0,
+  };
+
+  const chartData = data?.chartData || [];
+  const branchPerformance = data?.branchPerformance || [];
+  const recentActivity = data?.recentActivity || [];
+
+  // Log what's being rendered
+  console.log('ðŸŽ¨ Rendering Command Center with:', {
+    vitalsKeys: Object.keys(vitals),
+    chartPoints: chartData.length,
+    branches: branchPerformance.length,
+    activities: recentActivity.length,
+  });
+
   return (
-    <div className="min-h-screen bg-slate-900">
+    <div className="min-h-screen bg-black">
       {/* Header */}
-      <div className="bg-slate-950/50 border-b border-slate-800 px-6 py-4">
+      <div className="bg-zinc-950 border-b border-zinc-800 px-6 py-4">
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold text-white">Command Center</h1>
-            <p className="text-sm text-slate-400">Real-time business intelligence</p>
+            <p className="text-sm text-zinc-500">Real-time business intelligence</p>
           </div>
           <div className="flex items-center gap-2">
-            <div className="px-3 py-1 bg-emerald-500/10 border border-emerald-500/20 rounded-lg">
-              <p className="text-xs font-mono text-emerald-400">LIVE</p>
-            </div>
+            <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" />
+            <span className="text-xs font-mono text-emerald-500">LIVE</span>
           </div>
         </div>
       </div>
 
-      {/* Main Content */}
-      <div className="grid grid-cols-12 gap-6 p-6">
-        {/* Top Row: Vitals */}
-        <div className="col-span-3">
-          <VitalCard
-            icon={DollarSign}
-            label="Today's Revenue"
-            value={data?.vitals?.todayRevenue || 0}
-            accentColor="emerald"
-          />
-        </div>
-        <div className="col-span-3">
-          <VitalCard
-            icon={TrendingUp}
-            label="Today's Profit"
-            value={data?.vitals?.todayProfit || 0}
-            accentColor="emerald"
-          />
-        </div>
-        <div className="col-span-3">
-          <VitalCard
-            icon={Wallet}
-            label="Total Debt"
-            value={data?.vitals?.totalDebt || 0}
-            accentColor="amber"
-          />
-        </div>
-        <div className="col-span-3">
-          <VitalCard
-            icon={Package}
-            label="Inventory Value"
-            value={data?.vitals?.inventoryValue || 0}
-          />
-        </div>
-
-        {/* Danger Zone Alert Cards */}
-        {((data?.dangerZone?.lowStockCount || 0) > 0 || (data?.dangerZone?.pendingReversals || 0) > 0) && (
-          <>
-            {(data?.dangerZone?.lowStockCount || 0) > 0 && (
-              <div className="col-span-3">
-                <VitalCard
-                  icon={AlertTriangle}
-                  label="Low Stock Items"
-                  value={data?.dangerZone?.lowStockCount || 0}
-                  format="number"
-                  danger
-                />
-              </div>
-            )}
-            {(data?.dangerZone?.pendingReversals || 0) > 0 && (
-              <div className="col-span-3">
-                <VitalCard
-                  icon={AlertTriangle}
-                  label="Pending Reversals"
-                  value={data?.dangerZone?.pendingReversals || 0}
-                  format="number"
-                  danger
-                />
-              </div>
-            )}
-          </>
-        )}
-
-        {/* Middle Section */}
-        <div className="col-span-8">
-          <ProfitWedge data={data?.dailyStats || []} />
-        </div>
-        <div className="col-span-4">
-          <LiveStream activities={data?.recentActivity || []} />
+      {/* Main Content - 12 Column Grid */}
+      <div className="p-6 space-y-6">
+        {/* ROW 1: Vitals (4 Cards) */}
+        <div className="grid grid-cols-12 gap-6">
+          <div className="col-span-3">
+            <VitalCard
+              label="Today's Revenue"
+              value={vitals.todayRevenue || 0}
+              trend={vitals.revenueTrend || 0}
+              icon={Wallet}
+              link="/admin/audit"
+            />
+          </div>
+          <div className="col-span-3">
+            <VitalCard
+              label="Net Profit"
+              value={vitals.todayProfit || 0}
+              trend={vitals.profitTrend || 0}
+              icon={TrendingUp}
+              link="/admin/audit"
+            />
+          </div>
+          <div className="col-span-3">
+            <VitalCard
+              label="Total Debt"
+              value={vitals.totalDebt || 0}
+              trend={0}
+              icon={AlertTriangle}
+              link="/admin/debts"
+            />
+          </div>
+          <div className="col-span-3">
+            <VitalCard
+              label="Low Stock"
+              value={vitals.lowStockCount || 0}
+              trend={0}
+              icon={Package}
+              format="number"
+              link="/admin/inventory"
+              isAlert={true}
+            />
+          </div>
         </div>
 
-        {/* Bottom Section */}
-        <div className="col-span-12">
-          <BranchRace data={data?.branchSalesByHour || []} />
+        {/* ROW 2: Chart + Live Ticker */}
+        <div className="grid grid-cols-12 gap-6">
+          <div className="col-span-9">
+            <DailyPerformanceChart data={chartData} />
+          </div>
+          <div className="col-span-3">
+            <LiveTicker data={recentActivity} />
+          </div>
         </div>
 
-        {/* System HUD */}
-        <div className="col-span-12">
-          <SystemHUD systemStatus={data?.systemStatus || { dbLatency: 'N/A', activeUsers: 0 }} />
+        {/* ROW 3: Branch Pillars */}
+        <div className="grid grid-cols-12 gap-6">
+          <div className="col-span-12">
+            <BranchPillars data={branchPerformance} />
+          </div>
         </div>
       </div>
     </div>

@@ -4,5 +4,7 @@ const adminController = require('../controllers/adminController');
 const { authenticate, authorize } = require('../middleware/auth');
 
 router.get('/stats', authenticate, authorize('ADMIN'), adminController.getAdminStats);
+router.get('/mission-control', authenticate, authorize('ADMIN'), adminController.getCommandCenterStats);
+router.get('/branches', authenticate, adminController.getBranches);
 
 module.exports = router;
