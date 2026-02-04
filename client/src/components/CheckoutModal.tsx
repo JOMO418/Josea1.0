@@ -1,13 +1,34 @@
 import { useState, useEffect, useRef, FormEvent } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   X, Banknote, Smartphone, CreditCard, User,
-  CheckCircle, Zap, Printer, PlusCircle, ArrowRight
+  CheckCircle, Zap, Printer, PlusCircle, ArrowRight, Phone, Clock, Eye
 } from 'lucide-react';
 import { useStore, useCartTotal } from '../store/useStore';
+import { api } from '../api/axios';
 import { axiosInstance } from '../api/axios';
 import { notifySaleComplete, notifyApiError } from '../utils/notification';
+import mpesaService from '../services/mpesa.service';
+import SupermarketMpesaModal from './SupermarketMpesaModal';
 import '../styles/print.css';
+
+// Custom debounce hook
+function useDebounce<T>(value: T, delay: number): T {
+  const [debouncedValue, setDebouncedValue] = useState(value);
+
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedValue(value);
+    }, delay);
+
+    return () => {
+      clearTimeout(handler);
+    };
+  }, [value, delay]);
+
+  return debouncedValue;
+}
 
 interface CheckoutModalProps {
   isOpen: boolean;
@@ -16,6 +37,7 @@ interface CheckoutModalProps {
 }
 
 export default function CheckoutModal({ isOpen, onClose, onSuccess }: CheckoutModalProps) {
+  const navigate = useNavigate();
   const cart = useStore((state) => state.cart);
   const clearCart = useStore((state) => state.clearCart);
   const cartTotal = useCartTotal();
@@ -23,29 +45,132 @@ export default function CheckoutModal({ isOpen, onClose, onSuccess }: CheckoutMo
   // Input States
   const [cashAmount, setCashAmount] = useState('');
   const [mpesaAmount, setMpesaAmount] = useState('');
-  
-  // Deni Overlay States
-  const [showDeniPopup, setShowDeniPopup] = useState(false);
-  const [deniAmount, setDeniAmount] = useState('');
-  const [customerName, setCustomerName] = useState('');
+  const [deniActive, setDeniActive] = useState(false);
+
+  // Customer Search States (CRM)
+  const [customerSearch, setCustomerSearch] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
+  const [suggestions, setSuggestions] = useState<any[]>([]);
+  const [_isSearching, setIsSearching] = useState(false);
+  const [_selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+
+  // M-Pesa Payment States (using unified customer phone)
+  const [mpesaReceiptNumber, setMpesaReceiptNumber] = useState<string | null>(null);
+  const [flagSaleForVerification, setFlagSaleForVerification] = useState(false);
+
+  // Controls whether the full-screen MpesaPaymentModal overlay is visible
+  const [showMpesaModal, setShowMpesaModal] = useState(false);
 
   // Status States
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [successData, setSuccessData] = useState<{receiptNumber: string, change: number} | null>(null);
+  const [successData, setSuccessData] = useState<{
+    receiptNumber: string;
+    change: number;
+    total: number;
+    subtotal: number;
+    cashPaid: number;
+    mpesaPaid: number;
+    creditAmount: number;
+    customerName: string;
+    customerPhone: string;
+    mpesaReceiptNumber: string | null;
+    isFlagged: boolean;
+    items: Array<{name: string; quantity: number; price: number; total: number}>;
+    servedBy: string;
+    branchName: string;
+    branchPhone: string;
+    timestamp: Date;
+  } | null>(null);
 
   const cashInputRef = useRef<HTMLInputElement>(null);
+  const mpesaInputRef = useRef<HTMLInputElement>(null);
+  const customerNameRef = useRef<HTMLInputElement>(null);
+  const customerPhoneRef = useRef<HTMLInputElement>(null);
+  const submitButtonRef = useRef<HTMLButtonElement>(null);
+  const suggestionsRef = useRef<HTMLDivElement>(null);
+
+  // Array of refs for keyboard navigation (order: Cash -> M-Pesa -> Phone -> Name -> Submit)
+  const inputRefs = [cashInputRef, mpesaInputRef, customerPhoneRef, customerNameRef];
+
+  // Keyboard navigation handler
+  const handleKeyNavigation = (e: React.KeyboardEvent<HTMLInputElement>, currentIndex: number) => {
+    if (e.key === 'ArrowDown' || (e.key === 'Enter' && currentIndex < inputRefs.length - 1)) {
+      e.preventDefault();
+      const nextRef = inputRefs[currentIndex + 1];
+      nextRef?.current?.focus();
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      if (currentIndex > 0) {
+        const prevRef = inputRefs[currentIndex - 1];
+        prevRef?.current?.focus();
+      }
+    } else if (e.key === 'Enter' && currentIndex === inputRefs.length - 1) {
+      // Last input, focus submit button
+      e.preventDefault();
+      submitButtonRef.current?.focus();
+    }
+  };
+
+  // Debounced search term
+  const debouncedSearch = useDebounce(customerSearch, 300);
 
   // Math Logic
   const cash = parseFloat(cashAmount) || 0;
   const mpesa = parseFloat(mpesaAmount) || 0;
-  const deni = parseFloat(deniAmount) || 0;
+  const deni = deniActive ? Math.max(0, cartTotal - cash - mpesa) : 0;
 
   const totalPaid = cash + mpesa + deni;
   const changeDue = Math.max(0, totalPaid - cartTotal);
   const remaining = Math.max(0, cartTotal - totalPaid);
   const isComplete = totalPaid >= (cartTotal - 0.01);
+
+  // Smart Customer Search (Auto-Suggest)
+  useEffect(() => {
+    const searchCustomers = async () => {
+      if (debouncedSearch.trim().length < 2) {
+        setSuggestions([]);
+        setShowSuggestions(false);
+        return;
+      }
+
+      setIsSearching(true);
+      try {
+        const response = await api.sales.searchCustomers(debouncedSearch.trim());
+        setSuggestions(response.data);
+        setShowSuggestions(response.data.length > 0);
+      } catch (err) {
+        console.error('Customer search error:', err);
+        setSuggestions([]);
+      } finally {
+        setIsSearching(false);
+      }
+    };
+
+    searchCustomers();
+  }, [debouncedSearch]);
+
+  // Auto-Fill Handler
+  const handleSelectCustomer = (customer: any) => {
+    setCustomerSearch(customer.name);
+    setCustomerPhone(customer.phone);
+    setSelectedCustomerId(customer.id);
+    setSuggestions([]);
+    setShowSuggestions(false);
+  };
+
+  // Click outside to close suggestions
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (suggestionsRef.current && !suggestionsRef.current.contains(event.target as Node)) {
+        setShowSuggestions(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   // SURGERY: Input Focus Fix
   useEffect(() => {
@@ -53,15 +178,51 @@ export default function CheckoutModal({ isOpen, onClose, onSuccess }: CheckoutMo
       const timer = setTimeout(() => cashInputRef.current?.focus(), 300);
       return () => clearTimeout(timer);
     }
-  }, [isOpen]); 
+  }, [isOpen]);
+
+  // Keyboard shortcuts for success screen
+  useEffect(() => {
+    if (!isOpen || !successData) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Prevent if user is typing in an input
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+
+      switch (e.key.toLowerCase()) {
+        case 'p':
+          e.preventDefault();
+          window.print();
+          break;
+        case 'n':
+          e.preventDefault();
+          handleNewSale();
+          break;
+        case 'escape':
+          e.preventDefault();
+          handleNewSale();
+          break;
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, successData]); 
 
   // SURGERY: Full Reset Logic
   const fullReset = () => {
-    setCashAmount(''); setMpesaAmount(''); setDeniAmount('');
-    setCustomerName(''); setCustomerPhone('');
+    setCashAmount('');
+    setMpesaAmount('');
+    setDeniActive(false);
+    setCustomerSearch('');
+    setCustomerPhone('');
+    setSelectedCustomerId(null);
+    setSuggestions([]);
+    setShowSuggestions(false);
     setSuccessData(null);
     setError('');
-    setShowDeniPopup(false);
+    // Reset M-Pesa state
+    setMpesaReceiptNumber(null);
+    setFlagSaleForVerification(false);
   };
 
   const handleNewSale = () => {
@@ -71,40 +232,178 @@ export default function CheckoutModal({ isOpen, onClose, onSuccess }: CheckoutMo
     onSuccess?.();
   };
 
+  // Phone field is now unified - no need for auto-populate
+
+  // Reset M-Pesa state when modal closes
+  useEffect(() => {
+    if (!isOpen) {
+      setMpesaReceiptNumber(null);
+    }
+  }, [isOpen]);
+
+  // ---------------------------------------------------------------------------
+  // runPayment — this is the function MpesaPaymentModal calls AFTER its
+  // visual hold stages. It does the real initiate + poll via mpesaService.
+  // ---------------------------------------------------------------------------
+  const runPayment = async (): Promise<{ success: boolean; receiptNumber?: string; reason?: string }> => {
+    try {
+      // Use unified customer phone for M-Pesa
+      const phoneValidation = mpesaService.validateKenyanPhone(customerPhone);
+      if (!phoneValidation.valid) {
+        return { success: false, reason: phoneValidation.error || 'Invalid phone number' };
+      }
+
+      // 🎭 DEMO MODE - Simulate successful payment for UI testing
+      const isDemoMode = import.meta.env.VITE_MPESA_DEMO_MODE === 'true';
+      if (isDemoMode && phoneValidation.formatted === '254708374149') {
+        console.log('🎭 [DEMO MODE] Simulating successful M-Pesa payment...');
+        // Wait 3 seconds to simulate processing
+        await new Promise(resolve => setTimeout(resolve, 3000));
+        return {
+          success: true,
+          receiptNumber: `DEMO${Date.now().toString().slice(-8)}`
+        };
+      }
+
+      // Short account ref for sandbox compatibility (max 12 chars)
+      const accountRef = `TEST${Date.now().toString().slice(-6)}`;
+
+      const response = await mpesaService.initiateMpesaPayment(
+        phoneValidation.formatted,
+        mpesa,
+        accountRef,
+        'Test Payment'
+      );
+
+      if (!response.success || !response.data) {
+        return { success: false, reason: response.error || 'Failed to initiate M-Pesa payment' };
+      }
+
+      // Poll until terminal state
+      const finalStatus = await mpesaService.pollPaymentStatus(
+        response.data.checkoutRequestId,
+        () => {} // status updates are visual inside the modal already
+      );
+
+      if (finalStatus.data?.status === 'completed') {
+        return { success: true, receiptNumber: finalStatus.data.mpesaReceiptNumber };
+      } else {
+        return { success: false, reason: finalStatus.data?.resultDesc || 'Payment failed or timed out.' };
+      }
+    } catch (err: any) {
+      console.error('M-Pesa runPayment error:', err);
+      return { success: false, reason: err.message || 'M-Pesa payment failed' };
+    }
+  };
+
+  // ---------------------------------------------------------------------------
+  // handleMpesaPayment — opens the modal and returns a promise that resolves
+  // once the modal tells us the outcome (success or failure).
+  // ---------------------------------------------------------------------------
+  const handleMpesaPayment = (): Promise<boolean> => {
+    return new Promise((resolve) => {
+      // store resolve so the modal callbacks can call it
+      mpesaResolveRef.current = resolve;
+      setShowMpesaModal(true);
+    });
+  };
+
+  // ref to hold the resolve function across renders
+  const mpesaResolveRef = useRef<((value: boolean) => void) | null>(null);
+
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     if (loading || !isComplete) return;
 
-    // Phone Validation for Deni
-    if (deni > 0 && (!customerName.trim() || !/^(?:254|\+254|0)?(7|1)\d{8}$/.test(customerPhone))) {
-      setError(customerName.trim() ? 'Valid phone required for Deni' : 'Customer name required for Deni');
-      setShowDeniPopup(true);
+    // Smart validation based on payment type
+    const needsPhone = mpesa > 0 || deniActive;
+
+    if (needsPhone && !customerPhone.trim()) {
+      setError(`Phone number required for ${mpesa > 0 ? 'M-Pesa' : 'DENI'} payment`);
+      return;
+    }
+
+    if (needsPhone && !/^(?:254|\+254|0)?(7|1)\d{8}$/.test(customerPhone)) {
+      setError('Invalid phone number format (use 07XX or 01XX)');
+      return;
+    }
+
+    // Validation for DENI (Credit) - Name is required
+    if (deniActive && !customerSearch.trim()) {
+      setError('Customer name required for DENI/Credit sales');
       return;
     }
 
     setLoading(true);
     try {
+      // STEP 1: Process M-Pesa payment if needed
+      const mpesa = parseFloat(mpesaAmount) || 0;
+      if (mpesa > 0) {
+        // Phone validation already done above
+        const mpesaSuccess = await handleMpesaPayment();
+        if (!mpesaSuccess) {
+          setLoading(false);
+          return;
+        }
+      }
+
+      // STEP 2: Create sale with payment details
       const payments = [];
       const nonCashTotal = mpesa + deni;
       const reportedCash = Math.max(0, cartTotal - nonCashTotal);
 
       if (cash > 0) payments.push({ method: 'CASH', amount: reportedCash });
-      if (mpesa > 0) payments.push({ method: 'MPESA', amount: mpesa });
+      if (mpesa > 0) payments.push({
+        method: 'MPESA',
+        amount: mpesa,
+        reference: mpesaReceiptNumber || undefined
+      });
       if (deni > 0) payments.push({ method: 'CREDIT', amount: deni });
+
+      // SMART CUSTOMER HANDLING
+      // Only save to customer DB if name is provided
+      const hasCustomerName = customerSearch.trim().length > 0;
+      const customerData = {
+        customerName: hasCustomerName ? customerSearch.trim() : 'Walk-in Customer',
+        customerPhone: customerPhone.trim() || null,
+        saveToCustomerDB: hasCustomerName // Flag to save in customer database
+      };
 
       const response = await axiosInstance.post('/sales', {
         items: cart.map(i => ({ productId: i.productId, quantity: i.quantity, unitPrice: i.price })),
         payments,
-        customerName: customerName || 'Walk-in Customer',
-        customerPhone: customerPhone || null
+        ...customerData,
+        // M-Pesa verification flags
+        flagForVerification: flagSaleForVerification && mpesa > 0,
+        mpesaReceiptNumber: mpesaReceiptNumber || undefined
       });
 
+      const saleData = response.data;
       setSuccessData({
-        receiptNumber: response.data.receiptNumber,
-        change: changeDue
+        receiptNumber: saleData.receiptNumber,
+        change: changeDue,
+        total: Number(saleData.total),
+        subtotal: Number(saleData.subtotal),
+        cashPaid: cash > 0 ? Math.max(0, cartTotal - mpesa - deni) : 0,
+        mpesaPaid: mpesa,
+        creditAmount: deni,
+        customerName: saleData.customerName || 'Walk-in Customer',
+        customerPhone: saleData.customerPhone || '',
+        mpesaReceiptNumber: saleData.mpesaReceiptNumber || mpesaReceiptNumber || null,
+        isFlagged: flagSaleForVerification && mpesa > 0,
+        items: cart.map(i => ({
+          name: i.name,
+          quantity: i.quantity,
+          price: i.price,
+          total: i.price * i.quantity
+        })),
+        servedBy: saleData.user?.name || 'Staff',
+        branchName: saleData.branch?.name || 'Branch',
+        branchPhone: saleData.branch?.phone || '',
+        timestamp: new Date()
       });
-      
-      notifySaleComplete(response.data.receiptNumber, cartTotal, () => {}, () => {});
+
+      notifySaleComplete(saleData.receiptNumber, cartTotal, () => {}, () => {});
     } catch (err: any) {
       setError(err.response?.data?.message || 'Transaction Failed');
       notifyApiError('Checkout Error', 'Backend payment mismatch');
@@ -114,142 +413,274 @@ export default function CheckoutModal({ isOpen, onClose, onSuccess }: CheckoutMo
   };
 
   return (
+    <>
     <AnimatePresence>
       {isOpen && (
         <>
-          {/* FIXED PRINT CSS - Targets specific elements */}
+          {/* PROFESSIONAL PRINT CSS */}
           <style>{`
             @media print {
               @page {
                 size: 80mm auto;
                 margin: 0;
               }
-              
-              /* Hide the modal wrapper */
-              .checkout-modal-wrapper {
-                display: none !important;
+
+              html, body {
+                width: 80mm;
+                margin: 0 !important;
+                padding: 0 !important;
+                background: white !important;
               }
-              
-              /* Show only the thermal receipt */
-              #thermal-receipt {
-                display: block !important;
-                position: absolute !important;
-                left: 0 !important;
-                top: 0 !important;
-                width: 80mm !important;
+
+              body * {
+                visibility: hidden;
+              }
+
+              #print-receipt, #print-receipt * {
+                visibility: visible;
+              }
+
+              #print-receipt {
+                position: fixed;
+                left: 0;
+                top: 0;
+                width: 80mm;
                 background: white !important;
                 color: black !important;
+                font-family: 'Courier New', monospace !important;
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+              }
+
+              .no-print {
+                display: none !important;
+              }
+            }
+
+            @media screen {
+              #print-receipt {
+                display: none;
               }
             }
           `}</style>
 
-          {/* THERMAL RECEIPT - Positioned at root level */}
-          <div id="thermal-receipt" style={{ display: 'none' }}>
-            <div style={{ width: '80mm', margin: '0 auto', padding: '16px', fontFamily: 'monospace', color: 'black', background: 'white' }}>
-              {/* Business Header */}
-              <div style={{ textAlign: 'center', marginBottom: '16px', borderBottom: '2px dashed black', paddingBottom: '12px' }}>
-                <h1 style={{ fontSize: '20px', fontWeight: '900', textTransform: 'uppercase', letterSpacing: '0.05em', margin: '0' }}>PRAM AUTO SPARES</h1>
-                <p style={{ fontSize: '12px', marginTop: '4px', margin: '0' }}>Kiserian Branch</p>
-                <p style={{ fontSize: '12px', margin: '0' }}>Tel: 0712 345 678</p>
-              </div>
-
-              {/* Receipt Type Header */}
-              <div style={{ textAlign: 'center', marginBottom: '16px' }}>
-                <h2 style={{ fontSize: '18px', fontWeight: '900', textTransform: 'uppercase', letterSpacing: '0.05em', margin: '0' }}>
-                  {deni > 0 ? 'DEBT INVOICE' : 'OFFICIAL RECEIPT'}
-                </h2>
-                {successData && (
-                  <p style={{ fontSize: '12px', marginTop: '4px', margin: '0' }}>Receipt: {successData.receiptNumber}</p>
-                )}
-                <p style={{ fontSize: '12px', margin: '0' }}>{new Date().toLocaleString('en-KE')}</p>
-              </div>
-
-              {/* Debt Alert Section */}
-              {deni > 0 && (
-                <div style={{ marginBottom: '16px', border: '4px solid black', padding: '12px' }}>
-                  <div style={{ background: 'black', color: 'white', textAlign: 'center', padding: '12px 0', marginBottom: '12px', fontWeight: '900' }}>
-                    <p style={{ fontSize: '16px', margin: '0' }}>TO BE PAID</p>
-                    <p style={{ fontSize: '24px', marginTop: '4px', margin: '0' }}>KES {deni.toLocaleString()}</p>
+          {/* PROFESSIONAL THERMAL RECEIPT FOR PRINTING */}
+          {successData && (
+            <div id="print-receipt">
+              <div style={{
+                width: '80mm',
+                padding: '4mm',
+                fontFamily: "'Courier New', monospace",
+                fontSize: '12px',
+                lineHeight: '1.4',
+                color: '#000',
+                background: '#fff'
+              }}>
+                {/* === HEADER === */}
+                <div style={{ textAlign: 'center', marginBottom: '3mm' }}>
+                  <div style={{ fontSize: '18px', fontWeight: 'bold', letterSpacing: '1px' }}>
+                    PRAM AUTO SPARES
                   </div>
-                  {customerName && (
-                    <div style={{ fontSize: '12px' }}>
-                      <p style={{ fontWeight: 'bold', marginBottom: '4px', margin: '0' }}>CUSTOMER:</p>
-                      <p style={{ margin: '0' }}>Name: {customerName}</p>
-                      <p style={{ margin: '0' }}>Phone: {customerPhone}</p>
+                  <div style={{ fontSize: '11px', marginTop: '1mm' }}>
+                    {successData.branchName}
+                  </div>
+                  {successData.branchPhone && (
+                    <div style={{ fontSize: '10px' }}>Tel: {successData.branchPhone}</div>
+                  )}
+                </div>
+
+                {/* === DIVIDER === */}
+                <div style={{ borderTop: '1px dashed #000', margin: '2mm 0' }}></div>
+
+                {/* === RECEIPT INFO === */}
+                <div style={{ textAlign: 'center', marginBottom: '2mm' }}>
+                  <div style={{
+                    fontSize: '14px',
+                    fontWeight: 'bold',
+                    padding: '2mm',
+                    background: successData.creditAmount > 0 ? '#000' : 'transparent',
+                    color: successData.creditAmount > 0 ? '#fff' : '#000'
+                  }}>
+                    {successData.creditAmount > 0 ? 'CREDIT INVOICE' : 'SALES RECEIPT'}
+                  </div>
+                </div>
+
+                <div style={{ fontSize: '10px', marginBottom: '3mm' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span>Receipt #:</span>
+                    <span style={{ fontWeight: 'bold' }}>{successData.receiptNumber}</span>
+                  </div>
+                  {successData.mpesaReceiptNumber && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px dotted #ddd', paddingTop: '1mm', marginTop: '1mm' }}>
+                      <span>M-Pesa Code:</span>
+                      <span style={{ fontWeight: 'bold', fontFamily: 'monospace' }}>{successData.mpesaReceiptNumber}</span>
+                    </div>
+                  )}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '1mm' }}>
+                    <span>Date:</span>
+                    <span>{successData.timestamp.toLocaleDateString('en-GB')}</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span>Time:</span>
+                    <span>{successData.timestamp.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span>Served by:</span>
+                    <span>{successData.servedBy}</span>
+                  </div>
+                </div>
+
+                {/* === CUSTOMER INFO (if not walk-in) === */}
+                {successData.customerName !== 'Walk-in Customer' && (
+                  <>
+                    <div style={{ borderTop: '1px dashed #000', margin: '2mm 0' }}></div>
+                    <div style={{ fontSize: '10px', marginBottom: '2mm' }}>
+                      <div style={{ fontWeight: 'bold', marginBottom: '1mm' }}>CUSTOMER:</div>
+                      <div>{successData.customerName}</div>
+                      {successData.customerPhone && <div>Tel: {successData.customerPhone}</div>}
+                    </div>
+                  </>
+                )}
+
+                {/* === DIVIDER === */}
+                <div style={{ borderTop: '1px dashed #000', margin: '2mm 0' }}></div>
+
+                {/* === ITEMS HEADER === */}
+                <div style={{ fontSize: '10px', fontWeight: 'bold', marginBottom: '1mm' }}>
+                  <div style={{ display: 'flex' }}>
+                    <span style={{ flex: 1 }}>ITEM</span>
+                    <span style={{ width: '50px', textAlign: 'right' }}>TOTAL</span>
+                  </div>
+                </div>
+
+                {/* === ITEMS LIST === */}
+                <div style={{ fontSize: '10px', marginBottom: '2mm' }}>
+                  {successData.items.map((item, idx) => (
+                    <div key={idx} style={{ marginBottom: '2mm', paddingBottom: '1mm', borderBottom: '1px dotted #ccc' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                        <span style={{ flex: 1, fontWeight: 'bold' }}>{item.name}</span>
+                        <span style={{ fontWeight: 'bold' }}>{item.total.toLocaleString()}</span>
+                      </div>
+                      <div style={{ fontSize: '9px', color: '#555' }}>
+                        {item.quantity} x {item.price.toLocaleString()}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* === DIVIDER === */}
+                <div style={{ borderTop: '2px solid #000', margin: '2mm 0' }}></div>
+
+                {/* === TOTALS === */}
+                <div style={{ fontSize: '11px', marginBottom: '2mm' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '1mm' }}>
+                    <span>Subtotal:</span>
+                    <span>KES {successData.subtotal.toLocaleString()}</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold', fontSize: '13px', padding: '1mm 0', borderTop: '1px solid #000', borderBottom: '1px solid #000' }}>
+                    <span>TOTAL:</span>
+                    <span>KES {successData.total.toLocaleString()}</span>
+                  </div>
+                </div>
+
+                {/* === PAYMENT BREAKDOWN === */}
+                <div style={{ fontSize: '10px', marginBottom: '2mm' }}>
+                  <div style={{ fontWeight: 'bold', marginBottom: '1mm' }}>PAYMENT:</div>
+                  {successData.cashPaid > 0 && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span>Cash:</span>
+                      <span>KES {successData.cashPaid.toLocaleString()}</span>
+                    </div>
+                  )}
+                  {successData.mpesaPaid > 0 && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span>M-Pesa:</span>
+                      <span>KES {successData.mpesaPaid.toLocaleString()}</span>
+                    </div>
+                  )}
+                  {successData.creditAmount > 0 && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold', color: '#000' }}>
+                      <span>Credit (DENI):</span>
+                      <span>KES {successData.creditAmount.toLocaleString()}</span>
                     </div>
                   )}
                 </div>
-              )}
 
-              {/* Items Table */}
-              <div style={{ marginBottom: '16px' }}>
-                <div style={{ borderBottom: '2px solid black', paddingBottom: '4px', marginBottom: '8px' }}>
-                  <p style={{ fontSize: '12px', fontWeight: 'bold', textTransform: 'uppercase', margin: '0' }}>ITEMS PURCHASED</p>
-                </div>
-                {cart.map((item, idx) => (
-                  <div key={idx}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px dashed #999', fontSize: '12px' }}>
-                      <div style={{ flex: 1 }}>
-                        <p style={{ fontWeight: 'bold', margin: '0 0 2px 0' }}>{item.name}</p>
-                        <p style={{ fontSize: '10px', color: '#666', margin: '0' }}>Qty: {item.quantity} @ KES {item.price.toLocaleString()}</p>
-                      </div>
-                      <div style={{ fontWeight: 'bold', textAlign: 'right', marginLeft: '8px' }}>
-                        <p style={{ margin: '0' }}>KES {(item.price * item.quantity).toLocaleString()}</p>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              {/* Payment Summary */}
-              <div style={{ borderTop: '2px solid black', paddingTop: '12px', marginBottom: '16px' }}>
-                <div style={{ marginBottom: '4px' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '14px', fontWeight: 'bold' }}>
-                    <span>TOTAL DUE:</span>
-                    <span>KES {cartTotal.toLocaleString()}</span>
-                  </div>
-                </div>
-
-                {cash > 0 && (
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', marginTop: '4px' }}>
-                    <span>Cash Paid:</span>
-                    <span>KES {cash.toLocaleString()}</span>
-                  </div>
-                )}
-
-                {mpesa > 0 && (
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', marginTop: '4px' }}>
-                    <span>M-Pesa Paid:</span>
-                    <span>KES {mpesa.toLocaleString()}</span>
-                  </div>
-                )}
-
-                {deni > 0 && (
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', fontWeight: 'bold', marginTop: '4px' }}>
-                    <span>Balance (Deni):</span>
-                    <span>KES {deni.toLocaleString()}</span>
-                  </div>
-                )}
-
-                {successData && successData.change > 0 && (
-                  <div style={{ marginTop: '8px' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '14px', fontWeight: 'bold', background: '#e5e5e5', padding: '4px' }}>
+                {/* === CHANGE DUE === */}
+                {successData.change > 0 && (
+                  <div style={{
+                    background: '#f0f0f0',
+                    padding: '2mm',
+                    marginBottom: '2mm',
+                    border: '1px solid #000'
+                  }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold', fontSize: '12px' }}>
                       <span>CHANGE:</span>
                       <span>KES {successData.change.toLocaleString()}</span>
                     </div>
                   </div>
                 )}
-              </div>
 
-              {/* Footer Branding */}
-              <div style={{ textAlign: 'center', borderTop: '2px dashed black', paddingTop: '12px', marginTop: '24px' }}>
-                <p style={{ fontSize: '9px', fontWeight: '900', textTransform: 'uppercase', letterSpacing: '0.1em', margin: '0 0 4px 0' }}>
-                  SYSTEM BY JOSEA SOFTWARE SOLUTIONS
-                </p>
-                <p style={{ fontSize: '8px', margin: '0' }}>Thank you for your business!</p>
+                {/* === OUTSTANDING BALANCE ALERT === */}
+                {successData.creditAmount > 0 && (
+                  <div style={{
+                    border: '2px solid #000',
+                    padding: '3mm',
+                    marginBottom: '3mm',
+                    textAlign: 'center'
+                  }}>
+                    <div style={{ fontWeight: 'bold', fontSize: '11px', marginBottom: '1mm' }}>
+                      BALANCE DUE
+                    </div>
+                    <div style={{ fontSize: '16px', fontWeight: 'bold' }}>
+                      KES {successData.creditAmount.toLocaleString()}
+                    </div>
+                    <div style={{ fontSize: '9px', marginTop: '1mm' }}>
+                      Please settle this amount at your earliest convenience
+                    </div>
+                  </div>
+                )}
+
+                {/* === DIVIDER === */}
+                <div style={{ borderTop: '1px dashed #000', margin: '3mm 0' }}></div>
+
+                {/* === FOOTER MESSAGE === */}
+                <div style={{ textAlign: 'center', fontSize: '10px', marginBottom: '2mm' }}>
+                  <div style={{ marginBottom: '1mm' }}>Thank you for your business!</div>
+                  <div style={{ fontSize: '9px' }}>Goods once sold cannot be returned</div>
+                  <div style={{ fontSize: '9px' }}>Please keep this receipt for reference</div>
+                </div>
+
+                {/* === eTIMS PLACEHOLDER === */}
+                <div style={{
+                  borderTop: '1px dashed #000',
+                  borderBottom: '1px dashed #000',
+                  padding: '2mm 0',
+                  margin: '2mm 0',
+                  textAlign: 'center',
+                  fontSize: '9px'
+                }}>
+                  <div>eTIMS: Pending Integration</div>
+                  <div style={{ fontFamily: 'monospace', letterSpacing: '1px' }}>----------------</div>
+                </div>
+
+                {/* === POWERED BY FOOTER === */}
+                <div style={{
+                  textAlign: 'center',
+                  paddingTop: '2mm',
+                  fontSize: '8px',
+                  borderTop: '1px solid #000'
+                }}>
+                  <div style={{ fontWeight: 'bold', letterSpacing: '0.5px' }}>
+                    Powered by Josea Software Solutions
+                  </div>
+                  <div style={{ marginTop: '1mm', fontSize: '7px' }}>
+                    www.joseasoftware.com
+                  </div>
+                </div>
               </div>
             </div>
-          </div>
+          )}
 
           {/* MODAL UI - Success/Checkout Screen */}
           <div className="checkout-modal-wrapper fixed inset-0 z-[100] flex items-center justify-center p-4">
@@ -261,69 +692,172 @@ export default function CheckoutModal({ isOpen, onClose, onSuccess }: CheckoutMo
 
             <motion.div
               initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }}
-              className="relative w-full max-w-4xl bg-[#09090b] border border-zinc-800 rounded-[2rem] shadow-2xl overflow-hidden flex flex-col h-[85vh]"
+              className="relative w-full max-w-4xl bg-[#09090b] border border-zinc-800 rounded-[2rem] shadow-2xl overflow-hidden flex flex-col max-h-[90vh]"
             >
             {successData ? (
-              <div className="receipt-container p-12 flex flex-col items-center text-center justify-between h-full">
-                <div className="flex-1 flex flex-col items-center justify-center">
-                  {/* Dynamic Header Based on Deni */}
-                  {deni > 0 ? (
+              <div className="receipt-container flex flex-col h-full">
+                {/* Scrollable Content Area */}
+                <div className="flex-1 overflow-y-auto p-8 flex flex-col items-center text-center">
+                  {/* FLAGGED SALE - Waiting for M-Pesa Confirmation */}
+                  {successData.isFlagged ? (
                     <>
-                      <div className="w-24 h-24 bg-rose-500/10 border border-rose-500/20 rounded-full flex items-center justify-center mb-6">
-                        <CreditCard className="w-12 h-12 text-rose-500" />
+                      <div className="w-20 h-20 bg-orange-500/10 border border-orange-500/20 rounded-full flex items-center justify-center mb-4 relative">
+                        <Clock className="w-10 h-10 text-orange-500" />
+                        <span className="absolute -top-1 -right-1 flex h-6 w-6">
+                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-orange-400 opacity-75"></span>
+                          <span className="relative inline-flex rounded-full h-6 w-6 bg-orange-500"></span>
+                        </span>
                       </div>
-                      <h2 className="text-4xl font-black text-rose-500 italic uppercase mb-1 receipt-header">TO BE PAID</h2>
-                      <p className="text-zinc-500 font-mono mb-4 italic">RECEIPT: {successData.receiptNumber}</p>
-                      <div className="w-full max-w-md bg-rose-500/5 border border-rose-500/20 rounded-3xl p-6 mb-8">
-                        <p className="text-zinc-500 text-[10px] font-black uppercase tracking-widest mb-1 italic">Outstanding Deni</p>
-                        <h4 className="text-5xl font-black text-rose-400 receipt-amount">KES {deni.toLocaleString()}</h4>
-                      </div>
-                      {customerName && (
-                        <div className="text-sm text-zinc-500 mb-4 receipt-customer">
-                          <p className="font-bold">Customer: {customerName}</p>
-                          <p className="font-mono">{customerPhone}</p>
+                      <h2 className="text-3xl font-black text-orange-500 italic uppercase mb-1 receipt-header">
+                        WAITING FOR M-PESA
+                      </h2>
+                      <p className="text-zinc-500 font-mono mb-4 italic text-sm">RECEIPT: {successData.receiptNumber}</p>
+
+                      {/* Warning Message */}
+                      <div className="w-full max-w-md bg-orange-500/10 border-2 border-orange-500/30 rounded-2xl p-6 mb-4">
+                        <p className="text-orange-300 text-sm font-bold mb-3">Sale Created - Awaiting Payment Confirmation</p>
+                        <div className="text-left space-y-2 text-xs text-zinc-400">
+                          <p>✓ Sale has been recorded in the system</p>
+                          <p>✓ Stock has been deducted</p>
+                          <p>⏳ Waiting for M-Pesa payment confirmation</p>
+                          <p className="text-orange-400 font-bold mt-3">
+                            You can verify this sale in the Sales page
+                          </p>
                         </div>
-                      )}
+                      </div>
+
+                      {/* Amount Info */}
+                      <div className="w-full max-w-md bg-zinc-900/50 border border-zinc-800 rounded-xl p-4 mb-4">
+                        <div className="grid grid-cols-2 gap-2 text-sm">
+                          <div className="text-zinc-500">Total Amount:</div>
+                          <div className="text-white font-bold text-right">KES {successData.total.toLocaleString()}</div>
+                          <div className="text-zinc-500">M-Pesa Expected:</div>
+                          <div className="text-orange-400 font-bold text-right">KES {successData.mpesaPaid.toLocaleString()}</div>
+                        </div>
+                      </div>
                     </>
                   ) : (
-                    <>
-                      <div className="w-24 h-24 bg-emerald-500/10 border border-emerald-500/20 rounded-full flex items-center justify-center mb-6">
-                        <CheckCircle className="w-12 h-12 text-emerald-500" />
-                      </div>
-                      <h2 className="text-4xl font-black text-emerald-500 italic uppercase mb-1 receipt-header">SALE COMPLETED</h2>
-                      <p className="text-zinc-500 font-mono mb-8 italic">RECEIPT: {successData.receiptNumber}</p>
-                    </>
+                    /* Dynamic Header Based on Credit */
+                    successData.creditAmount > 0 ? (
+                      <>
+                        <div className="w-20 h-20 bg-rose-500/10 border border-rose-500/20 rounded-full flex items-center justify-center mb-4">
+                          <CreditCard className="w-10 h-10 text-rose-500" />
+                        </div>
+                        <h2 className="text-3xl font-black text-rose-500 italic uppercase mb-1 receipt-header">CREDIT SALE</h2>
+                        <p className="text-zinc-500 font-mono mb-3 italic text-sm">RECEIPT: {successData.receiptNumber}</p>
+
+                        {/* Outstanding Balance - Prominent Display */}
+                        <div className="w-full max-w-md bg-rose-500/10 border-2 border-rose-500/30 rounded-2xl p-5 mb-4">
+                          <p className="text-rose-300 text-[10px] font-black uppercase tracking-widest mb-1">Outstanding Balance</p>
+                          <h4 className="text-4xl font-black text-rose-400 receipt-amount">KES {successData.creditAmount.toLocaleString()}</h4>
+                          <p className="text-rose-300/60 text-xs mt-2">To be collected from customer</p>
+                        </div>
+
+                        {/* Customer Info */}
+                        <div className="bg-zinc-800/50 rounded-xl px-4 py-3 mb-4">
+                          <p className="text-white font-bold">{successData.customerName}</p>
+                          {successData.customerPhone && <p className="text-zinc-400 font-mono text-sm">{successData.customerPhone}</p>}
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <div className="w-20 h-20 bg-emerald-500/10 border border-emerald-500/20 rounded-full flex items-center justify-center mb-4">
+                          <CheckCircle className="w-10 h-10 text-emerald-500" />
+                        </div>
+                        <h2 className="text-3xl font-black text-emerald-500 italic uppercase mb-1 receipt-header">SALE COMPLETED</h2>
+                        <p className="text-zinc-500 font-mono mb-1 italic text-sm">RECEIPT: {successData.receiptNumber}</p>
+                        {successData.mpesaReceiptNumber && (
+                          <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-lg px-3 py-2 mb-3">
+                            <p className="text-emerald-400 text-[9px] font-bold uppercase tracking-wider mb-0.5">M-Pesa Code</p>
+                            <p className="text-white font-mono font-bold text-sm">{successData.mpesaReceiptNumber}</p>
+                          </div>
+                        )}
+                      </>
+                    )
                   )}
 
                   {/* Change Display */}
-                  {successData.change > 0 && deni === 0 && (
-                    <div className="w-full max-w-md bg-emerald-500/5 border border-emerald-500/20 rounded-3xl p-6 mb-10">
-                      <p className="text-zinc-500 text-[10px] font-black uppercase tracking-widest mb-1 italic">Give Change</p>
-                      <h4 className="text-5xl font-black text-emerald-400 receipt-change">KES {successData.change.toLocaleString()}</h4>
+                  {successData.change > 0 && successData.creditAmount === 0 && (
+                    <div className="w-full max-w-md bg-emerald-500/10 border-2 border-emerald-500/30 rounded-2xl p-5 mb-4">
+                      <p className="text-emerald-300 text-[10px] font-black uppercase tracking-widest mb-1">Give Change</p>
+                      <h4 className="text-4xl font-black text-emerald-400 receipt-change">KES {successData.change.toLocaleString()}</h4>
                     </div>
                   )}
 
-                  {/* Action Buttons */}
-                  <div className="grid grid-cols-2 gap-4 w-full max-w-lg no-print">
-                    <button
-                      onClick={() => {
-                        if (successData) window.print();
-                      }}
-                      disabled={!successData}
-                      className="flex items-center justify-center gap-3 py-5 bg-white text-black font-black rounded-2xl hover:bg-zinc-200 transition-all uppercase italic disabled:opacity-50"
-                    >
-                      <Printer size={20} /> PRINT
-                    </button>
-                    <button onClick={handleNewSale} className="flex items-center justify-center gap-3 py-5 bg-blue-600 text-white font-black rounded-2xl hover:bg-blue-500 transition-all uppercase italic shadow-lg shadow-blue-600/20">
-                      <PlusCircle size={20} /> NEW SALE
-                    </button>
+                  {/* Sale Summary */}
+                  <div className="w-full max-w-md bg-zinc-900/50 border border-zinc-800 rounded-xl p-4 mb-4">
+                    <div className="grid grid-cols-2 gap-2 text-sm">
+                      <div className="text-zinc-500">Total:</div>
+                      <div className="text-white font-bold text-right">KES {successData.total.toLocaleString()}</div>
+                      {successData.cashPaid > 0 && (
+                        <>
+                          <div className="text-zinc-500">Cash:</div>
+                          <div className="text-emerald-400 text-right">KES {successData.cashPaid.toLocaleString()}</div>
+                        </>
+                      )}
+                      {successData.mpesaPaid > 0 && (
+                        <>
+                          <div className="text-zinc-500">M-Pesa:</div>
+                          <div className="text-blue-400 text-right">KES {successData.mpesaPaid.toLocaleString()}</div>
+                        </>
+                      )}
+                      {successData.creditAmount > 0 && (
+                        <>
+                          <div className="text-zinc-500">Credit (DENI):</div>
+                          <div className="text-rose-400 font-bold text-right">KES {successData.creditAmount.toLocaleString()}</div>
+                        </>
+                      )}
+                    </div>
                   </div>
                 </div>
 
-                {/* Branding Footer */}
-                <div className="mt-8 pt-6 border-t border-zinc-800/30 w-full receipt-footer">
+                {/* Fixed Bottom Section - Always Visible */}
+                <div className="flex-shrink-0 p-6 bg-zinc-900/80 border-t border-zinc-800">
+                  {/* Action Buttons */}
+                  {successData.isFlagged ? (
+                    /* Flagged Sale Buttons */
+                    <div className="w-full max-w-lg mx-auto mb-4 no-print">
+                      <button
+                        onClick={() => {
+                          handleNewSale();
+                          navigate('/sales');
+                        }}
+                        className="w-full flex items-center justify-center gap-3 py-4 bg-orange-600 text-white font-black rounded-2xl hover:bg-orange-500 transition-all uppercase italic shadow-lg shadow-orange-600/20"
+                      >
+                        <Eye size={20} /> VIEW IN SALES PAGE
+                      </button>
+                      <p className="text-zinc-500 text-xs text-center mt-3">
+                        Track this sale and verify M-Pesa payment in the Sales page
+                      </p>
+                    </div>
+                  ) : (
+                    /* Normal Sale Buttons */
+                    <div className="grid grid-cols-2 gap-4 w-full max-w-lg mx-auto mb-4 no-print">
+                      <button
+                        onClick={() => window.print()}
+                        className="flex items-center justify-center gap-3 py-4 bg-white text-black font-black rounded-2xl hover:bg-zinc-200 transition-all uppercase italic"
+                      >
+                        <Printer size={20} /> PRINT
+                      </button>
+                      <button
+                        onClick={handleNewSale}
+                        className="flex items-center justify-center gap-3 py-4 bg-blue-600 text-white font-black rounded-2xl hover:bg-blue-500 transition-all uppercase italic shadow-lg shadow-blue-600/20"
+                      >
+                        <PlusCircle size={20} /> NEW SALE
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Keyboard Hints */}
+                  <div className="flex justify-center gap-6 text-zinc-600 text-[10px] font-mono mb-3">
+                    <span>P = Print</span>
+                    <span>N = New Sale</span>
+                    <span>ESC = Close</span>
+                  </div>
+
+                  {/* Branding Footer */}
                   <p className="text-zinc-600 text-[10px] font-black uppercase tracking-[0.3em] text-center">
-                    SYSTEM BY JOSEA SOFTWARE SOLUTIONS
+                    Powered by Josea Software Solutions
                   </p>
                 </div>
               </div>
@@ -338,90 +872,177 @@ export default function CheckoutModal({ isOpen, onClose, onSuccess }: CheckoutMo
                 </div>
 
                 <div className="grid grid-cols-1 lg:grid-cols-2 flex-1 overflow-hidden relative">
-                  
-                  {/* Deni Popup */}
-                  <AnimatePresence>
-                    {showDeniPopup && (
-                      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 z-50 bg-black/90 backdrop-blur-md flex items-center justify-center p-8">
-                        <div className="w-full max-w-sm bg-zinc-900 border border-zinc-800 p-8 rounded-[2rem] space-y-4">
-                          <div className="flex justify-between items-center mb-2">
-                            <h3 className="text-xl font-black text-white italic uppercase tracking-tighter">Customer Deni</h3>
-                            <button onClick={() => setShowDeniPopup(false)}><X size={20} className="text-zinc-500"/></button>
-                          </div>
-                          <input type="number" value={deniAmount} onChange={(e) => setDeniAmount(e.target.value)} placeholder="Deni Amount" className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-4 text-white font-bold outline-none focus:border-blue-500" />
-                          <input type="text" value={customerName} onChange={(e) => setCustomerName(e.target.value)} placeholder="Customer Name" className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-4 text-white font-bold outline-none focus:border-blue-500" />
-                          <input type="tel" value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} placeholder="Phone Number (07...)" className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-4 text-white font-bold outline-none focus:border-blue-500" />
-                          <button onClick={() => setShowDeniPopup(false)} className="w-full py-4 bg-blue-600 text-white font-black rounded-xl uppercase italic mt-2 hover:bg-blue-500 transition-all">Confirm Details</button>
-                        </div>
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
 
-                  {/* Summary Area */}
-                  <div className="p-8 bg-zinc-900/20 border-r border-zinc-800/50 overflow-y-auto">
-                    <div className="mb-8">
-                      <p className="text-zinc-500 text-[10px] font-black uppercase tracking-[0.2em] mb-1 italic">Amount Due</p>
-                      <h3 className="text-6xl font-black text-white italic tracking-tighter">KES {cartTotal.toLocaleString()}</h3>
+                  {/* Summary Area - Compact */}
+                  <div className="p-6 bg-zinc-900/20 border-r border-zinc-800/50 flex flex-col justify-between">
+                    <div>
+                      <div className="mb-6">
+                        <p className="text-zinc-500 text-[9px] font-black uppercase tracking-wider mb-1">Amount Due</p>
+                        <h3 className="text-5xl font-black text-white tracking-tight">KES {cartTotal.toLocaleString()}</h3>
+                      </div>
+                      <div className="space-y-2 opacity-30 max-h-64 overflow-y-auto">
+                        {cart.map(item => (
+                          <div key={item.productId} className="flex justify-between text-xs font-bold">
+                            <span className="text-zinc-400 truncate">{item.name} x{item.quantity}</span>
+                            <span className="text-white ml-2">{(item.price * item.quantity).toLocaleString()}</span>
+                          </div>
+                        ))}
+                      </div>
                     </div>
-                    <div className="space-y-3 opacity-30">
-                      {cart.map(item => (
-                        <div key={item.productId} className="flex justify-between text-xs font-bold uppercase tracking-tight">
-                          <span className="text-zinc-400">{item.name} x{item.quantity}</span>
-                          <span className="text-white">{(item.price * item.quantity).toLocaleString()}</span>
+
+                    {/* DENI TOGGLE BUTTON */}
+                    <div className="mt-4">
+                      <button
+                        onClick={() => setDeniActive(!deniActive)}
+                        className={`w-full py-3 rounded-xl font-black uppercase text-sm transition-all ${
+                          deniActive
+                            ? 'bg-rose-600 text-white border-2 border-rose-500'
+                            : 'bg-zinc-800 text-zinc-400 border-2 border-zinc-700 hover:border-zinc-600'
+                        }`}
+                      >
+                        {deniActive ? '🔴 DENI' : 'DENI OFF'}
+                      </button>
+                      {deniActive && deni > 0 && (
+                        <div className="mt-2 text-center">
+                          <p className="text-rose-400 font-black text-lg">KES {deni.toLocaleString()}</p>
                         </div>
-                      ))}
+                      )}
                     </div>
                   </div>
 
                   {/* Payment Area */}
-                  <div className="p-8 flex flex-col bg-zinc-950 overflow-y-auto">
-                    <div className="flex-1 space-y-5">
-                      <div className={`p-5 rounded-[2rem] border-2 transition-all ${isComplete ? 'bg-emerald-500/10 border-emerald-500/40' : 'bg-zinc-900 border-zinc-800'}`}>
-                        <p className="text-[10px] font-black uppercase text-zinc-500 tracking-widest mb-1 italic">
-                          {isComplete ? 'Balance Covered' : 'Remaining Balance'}
+                  <div className="p-6 flex flex-col bg-zinc-950 h-full">
+                    {/* Balance/Change Section - Always Green for Visibility */}
+                    <div className={`px-4 py-3 rounded-xl border transition-all mb-4 ${isComplete ? 'bg-blue-500/10 border-blue-500/40' : 'bg-emerald-500/10 border-emerald-500/40'}`}>
+                      <div className="flex items-center justify-between">
+                        <p className="text-[9px] font-black uppercase text-zinc-500 tracking-wider">
+                          {isComplete ? 'Change Due' : 'Balance Remaining'}
                         </p>
-                        <p className={`text-3xl font-black italic tracking-tighter ${isComplete ? 'text-emerald-500' : 'text-white'}`}>
-                          {isComplete ? `CHANGE: KES ${changeDue.toLocaleString()}` : `KES ${remaining.toLocaleString()}`}
+                        <p className={`text-xl font-black ${isComplete ? 'text-blue-400' : 'text-emerald-400'}`}>
+                          KES {isComplete ? changeDue.toLocaleString() : remaining.toLocaleString()}
                         </p>
-                      </div>
-
-                      <div className="space-y-3">
-                        <div className="relative group">
-                          <Banknote className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-700 group-focus-within:text-white transition-colors" size={20} />
-                          <input 
-                            ref={cashInputRef} type="number" value={cashAmount}
-                            onChange={(e) => setCashAmount(e.target.value)}
-                            placeholder="CASH PAYMENT"
-                            className="w-full bg-zinc-900 border border-zinc-800 rounded-2xl py-5 pl-14 pr-4 text-xl font-black text-white outline-none focus:border-white transition-all"
-                          />
-                        </div>
-                        <div className="relative group">
-                          <Smartphone className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-700 group-focus-within:text-emerald-500 transition-colors" size={20} />
-                          <input 
-                            type="number" value={mpesaAmount}
-                            onChange={(e) => setMpesaAmount(e.target.value)}
-                            placeholder="M-PESA AMOUNT"
-                            className="w-full bg-zinc-900 border border-zinc-800 rounded-2xl py-5 pl-14 pr-4 text-xl font-black text-white outline-none focus:border-emerald-500 transition-all"
-                          />
-                        </div>
-                        <button 
-                          onClick={() => setShowDeniPopup(true)} 
-                          className={`w-full py-4 border border-dashed rounded-2xl flex items-center justify-center gap-2 text-[10px] font-black uppercase transition-all ${deni > 0 ? 'bg-blue-600/10 border-blue-500 text-blue-500' : 'border-zinc-800 text-zinc-600 hover:border-zinc-500'}`}
-                        >
-                          <User size={14}/> {deni > 0 ? `Deni Added: KES ${deni}` : 'Register Deni?'}
-                        </button>
                       </div>
                     </div>
 
-                    <div className="pt-6">
+                    {/* Payment Inputs - Compact */}
+                    <div className="flex-1">
+                      <div className="space-y-3">
+                        {/* Cash Input */}
+                        <div className="relative group">
+                          <Banknote className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-700 group-focus-within:text-white transition-colors" size={18} />
+                          <input
+                            ref={cashInputRef}
+                            type="number"
+                            value={cashAmount}
+                            onChange={(e) => setCashAmount(e.target.value)}
+                            onKeyDown={(e) => handleKeyNavigation(e, 0)}
+                            placeholder="Cash Amount"
+                            className="w-full bg-zinc-900 border border-zinc-800 rounded-xl py-3.5 pl-12 pr-4 text-lg font-bold text-white placeholder:text-zinc-600 outline-none focus:border-white focus:ring-2 focus:ring-white/20 transition-all"
+                          />
+                        </div>
+
+                        {/* M-Pesa Input */}
+                        <div className="relative group">
+                          <Smartphone className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-700 group-focus-within:text-emerald-500 transition-colors" size={18} />
+                          <input
+                            ref={mpesaInputRef}
+                            type="number"
+                            value={mpesaAmount}
+                            onChange={(e) => setMpesaAmount(e.target.value)}
+                            onKeyDown={(e) => handleKeyNavigation(e, 1)}
+                            placeholder="M-Pesa Amount"
+                            className="w-full bg-zinc-900 border border-zinc-800 rounded-xl py-3.5 pl-12 pr-4 text-lg font-bold text-white placeholder:text-zinc-600 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 transition-all"
+                          />
+                        </div>
+
+                        {/* Phone Input - Now 3rd main field */}
+                        <div className="relative group">
+                          <Phone className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-700 group-focus-within:text-blue-500 transition-colors" size={18} />
+                          <input
+                            ref={customerPhoneRef}
+                            type="tel"
+                            value={customerPhone}
+                            onChange={(e) => setCustomerPhone(e.target.value)}
+                            onKeyDown={(e) => handleKeyNavigation(e, 2)}
+                            placeholder={(mpesa > 0 || deniActive) ? "Phone Number (Required)" : "Phone Number (Optional)"}
+                            className={`w-full bg-zinc-900 border rounded-xl py-3.5 pl-12 pr-4 text-lg font-bold text-white placeholder:text-zinc-600 outline-none transition-all ${
+                              (mpesa > 0 || deniActive) && !customerPhone.trim()
+                                ? 'border-rose-500 focus:border-rose-400 focus:ring-2 focus:ring-rose-500/20'
+                                : 'border-zinc-800 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20'
+                            }`}
+                          />
+                        </div>
+
+                        {/* Customer Name - Single field, no header */}
+                        <div className="relative" ref={suggestionsRef}>
+                          <div className="relative group">
+                            <User className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-700 group-focus-within:text-zinc-400 transition-colors" size={18} />
+                            <input
+                              ref={customerNameRef}
+                              type="text"
+                              value={customerSearch}
+                              onChange={(e) => {
+                                setCustomerSearch(e.target.value);
+                                setShowSuggestions(true);
+                              }}
+                              onFocus={() => setShowSuggestions(suggestions.length > 0)}
+                              onKeyDown={(e) => {
+                                // Handle suggestion navigation
+                                if (showSuggestions && suggestions.length > 0 && e.key === 'ArrowDown') {
+                                  return; // Let default behavior handle suggestion navigation
+                                }
+                                handleKeyNavigation(e, 3);
+                              }}
+                              placeholder={deniActive ? "Customer Name (Required)" : "Customer Name (Optional)"}
+                              className={`w-full bg-zinc-900 border rounded-xl py-3.5 pl-12 pr-4 text-lg font-bold text-white placeholder:text-zinc-600 outline-none transition-all ${
+                                deniActive && !customerSearch.trim()
+                                  ? 'border-rose-500 focus:border-rose-400 focus:ring-2 focus:ring-rose-500/20'
+                                  : 'border-zinc-800 focus:border-zinc-600 focus:ring-2 focus:ring-zinc-500/20'
+                              }`}
+                            />
+                          </div>
+
+                          {/* Suggestions Dropdown */}
+                          {showSuggestions && suggestions.length > 0 && (
+                            <div className="absolute z-50 w-full mt-1 bg-zinc-900 border border-zinc-700 rounded-xl shadow-2xl max-h-48 overflow-y-auto">
+                              {suggestions.map((customer) => (
+                                <button
+                                  key={customer.id}
+                                  onClick={() => handleSelectCustomer(customer)}
+                                  className="w-full px-3 py-2 text-left hover:bg-zinc-800 transition-colors border-b border-zinc-800 last:border-0"
+                                >
+                                  <p className="text-white font-bold text-sm">{customer.name}</p>
+                                  <p className="text-zinc-500 text-xs font-mono">{customer.phone}</p>
+                                  {customer.totalDebt > 0 && (
+                                    <p className="text-rose-400 text-xs font-black mt-0.5">
+                                      DEBT: KES {customer.totalDebt.toLocaleString()}
+                                    </p>
+                                  )}
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Finalize Button - Compact */}
+                    <div className="pt-4">
                       <button
+                        ref={submitButtonRef}
                         onClick={handleSubmit}
+                        onKeyDown={(e) => {
+                          if (e.key === 'ArrowUp') {
+                            e.preventDefault();
+                            customerNameRef.current?.focus();
+                          }
+                        }}
                         disabled={!isComplete || loading}
-                        className="w-full py-6 bg-white text-black font-black text-xl rounded-[2rem] hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-10 flex items-center justify-center gap-3 italic uppercase shadow-2xl"
+                        className="w-full py-4 bg-white text-black font-black text-lg rounded-xl hover:scale-[1.01] active:scale-[0.99] transition-all disabled:opacity-10 flex items-center justify-center gap-2 uppercase shadow-xl focus:ring-2 focus:ring-white/30 focus:outline-none"
                       >
-                        {loading ? 'PROCESSING...' : <>FINALIZE SALE <ArrowRight size={24} /></>}
+                        {loading ? 'PROCESSING...' : <>FINALIZE SALE <ArrowRight size={20} /></>}
                       </button>
-                      {error && <p className="text-rose-500 text-[10px] font-black text-center mt-4 uppercase tracking-widest italic">{error}</p>}
+                      {error && <p className="text-rose-500 text-[9px] font-black text-center mt-2 uppercase tracking-wider">{error}</p>}
                     </div>
                   </div>
                 </div>
@@ -432,5 +1053,43 @@ export default function CheckoutModal({ isOpen, onClose, onSuccess }: CheckoutMo
         </>
       )}
     </AnimatePresence>
+
+    {/* ============================================================
+        SUPERMARKET M-PESA MODAL - STEP 1: Testing minimal version
+    ============================================================ */}
+    <SupermarketMpesaModal
+      isOpen={showMpesaModal}
+      onClose={() => {
+        setShowMpesaModal(false);
+        setLoading(false);
+        mpesaResolveRef.current?.(false);
+        mpesaResolveRef.current = null;
+      }}
+      amount={mpesa}
+      phone={customerPhone}
+      accountReference={`SALE${Date.now().toString().slice(-8)}`}
+      tillNumber={import.meta.env.VITE_MPESA_TILL_NUMBER || '174379'}
+      onPaymentSuccess={(receiptNum) => {
+        setMpesaReceiptNumber(receiptNum);
+        setShowMpesaModal(false);
+        mpesaResolveRef.current?.(true);
+        mpesaResolveRef.current = null;
+      }}
+      onPaymentFailed={(reason) => {
+        setError(reason);
+        setShowMpesaModal(false);
+        setLoading(false);
+        mpesaResolveRef.current?.(false);
+        mpesaResolveRef.current = null;
+      }}
+      onCompleteLater={async () => {
+        setFlagSaleForVerification(true);
+        setShowMpesaModal(false);
+        setLoading(false);
+        mpesaResolveRef.current?.(true);
+        mpesaResolveRef.current = null;
+      }}
+    />
+    </>
   );
 }

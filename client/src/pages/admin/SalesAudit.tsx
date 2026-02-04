@@ -16,8 +16,10 @@ import {
   User,
   Users,
   MapPin,
-  Eye,
   Package,
+  Search,
+  Settings,
+  RotateCcw,
 } from 'lucide-react';
 import axios from '../../api/axios';
 import { toast, Toaster } from 'sonner';
@@ -72,6 +74,11 @@ interface Sale {
     id: string;
     name: string;
   };
+  // M-Pesa Verification Fields
+  flaggedForVerification?: boolean;
+  mpesaVerificationStatus?: 'NOT_APPLICABLE' | 'PENDING' | 'VERIFIED' | 'FAILED';
+  mpesaReceiptNumber?: string | null;
+  flaggedAt?: string | null;
 }
 
 interface KPIData {
@@ -142,12 +149,40 @@ export default function SalesAudit() {
   const [isReversalModalOpen, setIsReversalModalOpen] = useState(false);
   const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [openDropdownId, setOpenDropdownId] = useState<string | null>(null);
 
   // Filters
   const [branchFilter, setBranchFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+
+  // ============================================
+  // DEBOUNCED SEARCH
+  // ============================================
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(searchQuery);
+    }, 500);
+
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
+  // ============================================
+  // CLOSE DROPDOWN ON OUTSIDE CLICK
+  // ============================================
+  useEffect(() => {
+    const handleClickOutside = () => {
+      if (openDropdownId) {
+        setOpenDropdownId(null);
+      }
+    };
+
+    document.addEventListener('click', handleClickOutside);
+    return () => document.removeEventListener('click', handleClickOutside);
+  }, [openDropdownId]);
 
   // ============================================
   // FETCH DATA
@@ -156,7 +191,7 @@ export default function SalesAudit() {
     fetchBranches();
     fetchSales();
     fetchKPIs();
-  }, [branchFilter, statusFilter, startDate, endDate]);
+  }, [branchFilter, statusFilter, startDate, endDate, debouncedSearch]);
 
   const fetchBranches = async () => {
     try {
@@ -175,6 +210,12 @@ export default function SalesAudit() {
       };
 
       if (branchFilter) params.branchId = branchFilter;
+
+      // DEEP SEARCH: Receipt, Customer, or Product
+      if (debouncedSearch) {
+        params.search = debouncedSearch;
+        console.log('🔍 Deep Search:', debouncedSearch);
+      }
 
       // DATE FILTER FIX: Convert to precise timestamps (Start of Day 00:00:00, End of Day 23:59:59)
       if (startDate) {
@@ -221,6 +262,11 @@ export default function SalesAudit() {
     try {
       const params: any = {};
       if (branchFilter) params.branchId = branchFilter;
+
+      // CONTEXT-AWARE SEARCH: KPIs match table filter
+      if (debouncedSearch) {
+        params.search = debouncedSearch;
+      }
 
       // DATE FILTER FIX: Use same precise timestamps
       if (startDate) {
@@ -331,15 +377,33 @@ export default function SalesAudit() {
   // STATUS BADGE HELPER
   // ============================================
   const getStatusBadge = (sale: Sale) => {
+    // 🚨 HIGHEST PRIORITY: M-Pesa Verification Pending (Flagged Sales)
+    if (sale.flaggedForVerification && sale.mpesaVerificationStatus === 'PENDING') {
+      return (
+        <div className="flex items-center gap-2">
+          <span className="relative flex h-4 w-4">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-600 opacity-75"></span>
+            <span className="relative inline-flex rounded-full h-4 w-4 bg-red-600"></span>
+          </span>
+          <span className="px-3 py-1 rounded-lg bg-red-600 text-white text-xs font-black uppercase tracking-wider flex items-center gap-1.5 animate-pulse">
+            <AlertTriangle className="w-3 h-3" />
+            🚨 VERIFY NOW
+          </span>
+        </div>
+      );
+    }
+
+    // STRICT PRIORITY: Check isReversed SECOND
     if (sale.isReversed) {
       return (
-        <span className="px-3 py-1 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-xs font-bold uppercase tracking-wider flex items-center gap-1.5">
+        <span className="px-3 py-1 rounded-lg bg-red-600 border border-red-500 text-white text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 line-through">
           <XCircle className="w-3 h-3" />
           Reversed
         </span>
       );
     }
 
+    // ONLY if not reversed, check other statuses
     if (sale.reversalStatus === 'PENDING') {
       return (
         <span className="px-3 py-1 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-400 text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 animate-pulse">
@@ -562,8 +626,36 @@ export default function SalesAudit() {
         <div className="bg-zinc-900/50 border border-zinc-800 rounded-2xl p-6">
           <div className="flex items-center gap-2 mb-4">
             <Filter className="w-5 h-5 text-zinc-500" />
-            <h3 className="text-sm font-bold text-white uppercase tracking-wider">Filters</h3>
+            <h3 className="text-sm font-bold text-white uppercase tracking-wider">Filters & Search</h3>
           </div>
+
+          {/* Super Search Bar */}
+          <div className="mb-6">
+            <div className="relative">
+              <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-zinc-500" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search Receipt, Customer, or Product..."
+                className="w-full pl-12 pr-4 py-3 bg-zinc-950 border border-zinc-700 rounded-xl text-white text-sm placeholder:text-zinc-600 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
+              />
+              {searchQuery && (
+                <button
+                  onClick={() => setSearchQuery('')}
+                  className="absolute right-4 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-white transition-colors"
+                >
+                  <XCircle className="w-4 h-4" />
+                </button>
+              )}
+            </div>
+            {debouncedSearch && (
+              <p className="mt-2 text-xs text-zinc-500">
+                🔍 Searching for: <span className="text-blue-400 font-bold">"{debouncedSearch}"</span>
+              </p>
+            )}
+          </div>
+
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             {/* Branch Filter */}
             <div>
@@ -674,7 +766,7 @@ export default function SalesAudit() {
               <tbody className="divide-y divide-zinc-200">
                 {loading ? (
                   <tr>
-                    <td colSpan={8} className="px-6 py-12 text-center">
+                    <td colSpan={9} className="px-6 py-12 text-center">
                       <div className="flex items-center justify-center gap-3">
                         <div className="w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
                         <span className="text-zinc-500 font-medium">Loading sales data...</span>
@@ -683,7 +775,7 @@ export default function SalesAudit() {
                   </tr>
                 ) : sales.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="px-6 py-12 text-center">
+                    <td colSpan={9} className="px-6 py-12 text-center">
                       <div className="flex flex-col items-center gap-3">
                         <FileText className="w-12 h-12 text-zinc-300" />
                         <p className="text-zinc-500 font-medium">No sales found</p>
@@ -696,30 +788,75 @@ export default function SalesAudit() {
                       key={sale.id}
                       initial={{ opacity: 0 }}
                       animate={{ opacity: 1 }}
-                      className={`hover:bg-zinc-50 transition-colors ${
-                        sale.reversalStatus === 'PENDING' ? 'bg-amber-50/50 border-l-4 border-l-amber-500' : ''
+                      onClick={() => {
+                        setSelectedSale(sale);
+                        setIsDetailsModalOpen(true);
+                      }}
+                      className={`transition-all cursor-pointer ${
+                        sale.flaggedForVerification && sale.mpesaVerificationStatus === 'PENDING'
+                          ? 'animate-pulse bg-red-50 border-l-4 border-l-red-600 hover:bg-red-100'
+                          : sale.reversalStatus === 'PENDING'
+                          ? 'bg-amber-50/50 border-l-4 border-l-amber-500'
+                          : 'hover:bg-zinc-50'
                       }`}
+                      style={
+                        sale.flaggedForVerification && sale.mpesaVerificationStatus === 'PENDING'
+                          ? {
+                              boxShadow: '0 0 20px rgba(220, 38, 38, 0.3)',
+                              animation: 'pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+                            }
+                          : undefined
+                      }
                     >
-                      {/* Date & Time */}
+                      {/* Date & Time - Compact Format */}
                       <td className="px-6 py-4">
-                        <span className="text-sm text-zinc-900 font-medium">
-                          {new Date(sale.createdAt).toLocaleDateString('en-GB', {
-                            day: '2-digit',
-                            month: 'short',
-                          })}
-                          {', '}
-                          {new Date(sale.createdAt).toLocaleTimeString('en-GB', {
-                            hour: '2-digit',
-                            minute: '2-digit',
-                          })}
+                        <div className="flex flex-col">
+                          <span className="text-xs font-bold text-zinc-900">
+                            {new Date(sale.createdAt).toLocaleDateString('en-GB', {
+                              day: '2-digit',
+                              month: 'short',
+                            })}
+                          </span>
+                          <span className="text-xs text-zinc-500 font-mono">
+                            {new Date(sale.createdAt).toLocaleTimeString('en-GB', {
+                              hour: '2-digit',
+                              minute: '2-digit',
+                            })}
+                          </span>
+                        </div>
+                      </td>
+
+                      {/* Receipt - Truncated with Hover */}
+                      <td className="px-6 py-4">
+                        <span
+                          className="font-mono text-sm text-zinc-900 font-bold cursor-help"
+                          title={sale.receiptNumber}
+                        >
+                          ...{sale.receiptNumber.slice(-4)}
                         </span>
                       </td>
 
-                      {/* Receipt */}
+                      {/* Sold Items */}
                       <td className="px-6 py-4">
-                        <span className="font-mono text-sm text-zinc-900 font-bold">
-                          {sale.receiptNumber}
-                        </span>
+                        <div className="flex flex-col gap-1">
+                          {sale.items.slice(0, 2).map((item, idx) => (
+                            <div key={idx} className="text-xs font-bold text-zinc-700">
+                              {item.quantity}x {item.product.name}
+                            </div>
+                          ))}
+                          {sale.items.length > 2 && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSelectedSale(sale);
+                                setIsDetailsModalOpen(true);
+                              }}
+                              className="text-xs font-bold text-blue-600 hover:text-blue-700 hover:underline text-left transition-colors"
+                            >
+                              + {sale.items.length - 2} More
+                            </button>
+                          )}
+                        </div>
                       </td>
 
                       {/* Customer */}
@@ -772,24 +909,78 @@ export default function SalesAudit() {
                         </div>
                       </td>
 
-                      {/* Actions */}
+                      {/* Actions - Settings Gear + Pending Review Button */}
                       <td className="px-6 py-4">
                         <div className="flex items-center justify-center gap-2">
-                          <button
-                            onClick={() => window.print()}
-                            className="p-2 rounded-lg hover:bg-zinc-100 transition-colors"
-                            title="Print Receipt"
-                          >
-                            <Printer className="w-4 h-4 text-zinc-600" />
-                          </button>
+                          {/* Pending Reversal Button - Always Visible for Immediate Attention */}
                           {sale.reversalStatus === 'PENDING' && (
                             <button
-                              onClick={() => handleOpenReversalModal(sale)}
-                              className="px-3 py-1.5 bg-amber-500 text-white rounded-lg hover:bg-amber-600 transition-colors text-xs font-bold uppercase tracking-wide"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleOpenReversalModal(sale);
+                              }}
+                              className="px-3 py-1.5 bg-amber-500 text-white rounded-lg hover:bg-amber-600 transition-colors text-xs font-bold uppercase tracking-wide animate-pulse"
                             >
-                              Review
+                              Review Request
                             </button>
                           )}
+
+                          {/* Settings Gear Dropdown */}
+                          <div className="relative">
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setOpenDropdownId(openDropdownId === sale.id ? null : sale.id);
+                              }}
+                              className="p-2 rounded-lg hover:bg-zinc-100 transition-colors"
+                              title="Actions"
+                            >
+                              <Settings className="w-4 h-4 text-zinc-600" />
+                            </button>
+
+                            {/* Dropdown Menu */}
+                            {openDropdownId === sale.id && (
+                              <div className="absolute right-0 top-full mt-1 w-48 bg-white border border-zinc-200 rounded-xl shadow-xl z-50 overflow-hidden">
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setSelectedSale(sale);
+                                    setIsDetailsModalOpen(true);
+                                    setOpenDropdownId(null);
+                                  }}
+                                  className="w-full px-4 py-3 flex items-center gap-3 hover:bg-zinc-50 transition-colors text-left"
+                                >
+                                  <Package className="w-4 h-4 text-blue-600" />
+                                  <span className="text-sm font-medium text-zinc-900">View Details</span>
+                                </button>
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    window.print();
+                                    setOpenDropdownId(null);
+                                  }}
+                                  className="w-full px-4 py-3 flex items-center gap-3 hover:bg-zinc-50 transition-colors text-left"
+                                >
+                                  <Printer className="w-4 h-4 text-zinc-600" />
+                                  <span className="text-sm font-medium text-zinc-900">Print Receipt</span>
+                                </button>
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    // Force Reversal - Admin Override
+                                    toast.warning('Force Reversal', {
+                                      description: 'This feature requires admin authentication',
+                                    });
+                                    setOpenDropdownId(null);
+                                  }}
+                                  className="w-full px-4 py-3 flex items-center gap-3 hover:bg-red-50 transition-colors text-left border-t border-zinc-100"
+                                >
+                                  <RotateCcw className="w-4 h-4 text-red-600" />
+                                  <span className="text-sm font-medium text-red-900">Force Reversal</span>
+                                </button>
+                              </div>
+                            )}
+                          </div>
                         </div>
                       </td>
                     </motion.tr>
@@ -897,6 +1088,311 @@ export default function SalesAudit() {
                   >
                     {submitting ? 'Processing...' : 'Approve Reversal'}
                   </button>
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Transaction Details Modal */}
+      <AnimatePresence>
+        {isDetailsModalOpen && selectedSale && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+            onClick={() => setIsDetailsModalOpen(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.9, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.9, y: 20 }}
+              onClick={(e) => e.stopPropagation()}
+              className="bg-white rounded-3xl shadow-2xl max-w-4xl w-full overflow-hidden max-h-[90vh] flex flex-col"
+            >
+              {/* Header */}
+              <div className="bg-gradient-to-r from-blue-600 to-indigo-600 px-8 py-6">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center">
+                      <FileText className="w-6 h-6 text-white" />
+                    </div>
+                    <div>
+                      <h2 className="text-2xl font-black text-white">Transaction Details</h2>
+                      <p className="text-white/80 text-sm font-medium">
+                        Receipt: {selectedSale.receiptNumber}
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => setIsDetailsModalOpen(false)}
+                    className="w-10 h-10 rounded-xl bg-white/10 hover:bg-white/20 transition-colors flex items-center justify-center"
+                  >
+                    <XCircle className="w-5 h-5 text-white" />
+                  </button>
+                </div>
+              </div>
+
+              {/* Content - Scrollable */}
+              <div className="flex-1 overflow-y-auto p-8">
+                {/* Transaction Info */}
+                <div className="mb-6 p-5 bg-zinc-50 rounded-2xl border border-zinc-200">
+                  <div className="grid grid-cols-3 gap-6">
+                    <div>
+                      <p className="text-xs text-zinc-500 font-bold uppercase tracking-wider mb-1.5">Date & Time</p>
+                      <p className="text-zinc-900 font-bold">
+                        {new Date(selectedSale.createdAt).toLocaleDateString('en-GB', {
+                          day: '2-digit',
+                          month: 'short',
+                          year: 'numeric',
+                        })}
+                        {' at '}
+                        {new Date(selectedSale.createdAt).toLocaleTimeString('en-GB', {
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        })}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-zinc-500 font-bold uppercase tracking-wider mb-1.5">Customer</p>
+                      <p className="text-zinc-900 font-bold">{selectedSale.customerName}</p>
+                      {selectedSale.customerPhone && (
+                        <p className="text-xs text-zinc-600 font-mono">{selectedSale.customerPhone}</p>
+                      )}
+                    </div>
+                    <div>
+                      <p className="text-xs text-zinc-500 font-bold uppercase tracking-wider mb-1.5">Branch</p>
+                      <p className="text-zinc-900 font-bold">{selectedSale.branch.name}</p>
+                      <p className="text-xs text-zinc-600">Cashier: {selectedSale.user.name}</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Items Table */}
+                <div className="mb-6">
+                  <h3 className="text-sm font-black text-zinc-900 uppercase tracking-wider mb-4 flex items-center gap-2">
+                    <Package className="w-4 h-4" />
+                    Sold Items ({selectedSale.items.length})
+                  </h3>
+                  <div className="border border-zinc-200 rounded-2xl overflow-hidden">
+                    <table className="w-full">
+                      <thead className="bg-zinc-100 border-b border-zinc-200">
+                        <tr>
+                          <th className="px-4 py-3 text-left text-xs font-bold text-zinc-700 uppercase tracking-wider">
+                            Product
+                          </th>
+                          <th className="px-4 py-3 text-center text-xs font-bold text-zinc-700 uppercase tracking-wider">
+                            Qty
+                          </th>
+                          <th className="px-4 py-3 text-right text-xs font-bold text-zinc-700 uppercase tracking-wider">
+                            Unit Price
+                          </th>
+                          <th className="px-4 py-3 text-right text-xs font-bold text-zinc-700 uppercase tracking-wider">
+                            Subtotal
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-zinc-200">
+                        {selectedSale.items.map((item, idx) => (
+                          <tr key={idx} className="hover:bg-zinc-50 transition-colors">
+                            <td className="px-4 py-3">
+                              <div>
+                                <p className="text-sm font-bold text-zinc-900">{item.product.name}</p>
+                                <p className="text-xs text-zinc-500 font-mono">{item.product.partNumber}</p>
+                              </div>
+                            </td>
+                            <td className="px-4 py-3 text-center">
+                              <span className="px-3 py-1 bg-blue-100 text-blue-900 rounded-lg text-sm font-bold">
+                                {item.quantity}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3 text-right">
+                              <span className="text-sm font-mono text-zinc-900">{formatKES(item.unitPrice)}</span>
+                            </td>
+                            <td className="px-4 py-3 text-right">
+                              <span className="text-sm font-bold text-zinc-900">{formatKES(item.total)}</span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                      <tfoot className="bg-zinc-50 border-t-2 border-zinc-300">
+                        <tr>
+                          <td colSpan={3} className="px-4 py-3 text-right">
+                            <span className="text-sm font-bold text-zinc-700 uppercase tracking-wider">Subtotal:</span>
+                          </td>
+                          <td className="px-4 py-3 text-right">
+                            <span className="text-lg font-black text-zinc-900">{formatKES(selectedSale.subtotal)}</span>
+                          </td>
+                        </tr>
+                        {selectedSale.discount > 0 && (
+                          <tr>
+                            <td colSpan={3} className="px-4 py-2 text-right">
+                              <span className="text-sm font-bold text-red-600 uppercase tracking-wider">Discount:</span>
+                            </td>
+                            <td className="px-4 py-2 text-right">
+                              <span className="text-sm font-bold text-red-600">-{formatKES(selectedSale.discount)}</span>
+                            </td>
+                          </tr>
+                        )}
+                        <tr className="bg-zinc-900">
+                          <td colSpan={3} className="px-4 py-4 text-right">
+                            <span className="text-base font-black text-white uppercase tracking-wider">Total:</span>
+                          </td>
+                          <td className="px-4 py-4 text-right">
+                            <span className="text-2xl font-black text-white">{formatKES(selectedSale.total)}</span>
+                          </td>
+                        </tr>
+                      </tfoot>
+                    </table>
+                  </div>
+                </div>
+
+                {/* Payment Breakdown */}
+                <div>
+                  <h3 className="text-sm font-black text-zinc-900 uppercase tracking-wider mb-4 flex items-center gap-2">
+                    <Banknote className="w-4 h-4" />
+                    Payment Breakdown
+                  </h3>
+                  <div className="space-y-3">
+                    {selectedSale.payments.map((payment, idx) => (
+                      <div
+                        key={idx}
+                        className="flex items-center justify-between p-4 bg-gradient-to-r from-zinc-50 to-zinc-100 border border-zinc-200 rounded-xl"
+                      >
+                        <div className="flex items-center gap-3">
+                          {getPaymentIcon(payment.method)}
+                          <div>
+                            <p className="text-sm font-bold text-zinc-900">{payment.method}</p>
+                            {payment.reference && (
+                              <p className="text-xs text-zinc-600 font-mono">Ref: {payment.reference}</p>
+                            )}
+                          </div>
+                        </div>
+                        <span className="text-lg font-black text-zinc-900">{formatKES(payment.amount)}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Reversal History */}
+                {(selectedSale.isReversed || selectedSale.reversalStatus !== 'NONE') && (
+                  <div className="mt-6">
+                    <h3 className="text-sm font-black text-zinc-900 uppercase tracking-wider mb-4 flex items-center gap-2">
+                      <RotateCcw className="w-4 h-4" />
+                      Reversal History
+                    </h3>
+                    <div className="p-5 bg-amber-50 border border-amber-200 rounded-2xl">
+                      <div className="space-y-3">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-bold text-zinc-700 uppercase tracking-wider">Status</span>
+                          <span className={`px-3 py-1 rounded-lg text-xs font-bold uppercase ${
+                            selectedSale.isReversed
+                              ? 'bg-red-600 text-white'
+                              : selectedSale.reversalStatus === 'PENDING'
+                              ? 'bg-amber-500 text-white'
+                              : selectedSale.reversalStatus === 'REJECTED'
+                              ? 'bg-zinc-600 text-white'
+                              : 'bg-zinc-200 text-zinc-700'
+                          }`}>
+                            {selectedSale.isReversed ? 'Reversed' : selectedSale.reversalStatus}
+                          </span>
+                        </div>
+                        {selectedSale.reversalReason && (
+                          <div>
+                            <span className="text-xs font-bold text-zinc-700 uppercase tracking-wider block mb-1">Reason</span>
+                            <p className="text-sm text-zinc-900 font-medium">{selectedSale.reversalReason}</p>
+                          </div>
+                        )}
+                        {selectedSale.isReversed && (
+                          <div className="pt-3 border-t border-amber-300">
+                            <div className="flex items-start gap-2">
+                              <AlertTriangle className="w-4 h-4 text-red-600 flex-shrink-0 mt-0.5" />
+                              <p className="text-xs text-red-900">
+                                This transaction has been reversed. All items have been restored to inventory.
+                              </p>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* M-PESA VERIFICATION SECTION - ADMIN OVERRIDE */}
+                {selectedSale.flaggedForVerification && selectedSale.mpesaVerificationStatus === 'PENDING' && (
+                  <div className="mt-6 p-5 bg-red-50 border-2 border-red-200 rounded-2xl">
+                    <div className="flex items-start gap-3 mb-4">
+                      <div className="relative flex h-8 w-8 flex-shrink-0">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-600 opacity-75"></span>
+                        <span className="relative inline-flex items-center justify-center rounded-full h-8 w-8 bg-red-600">
+                          <AlertTriangle className="w-4 h-4 text-white" />
+                        </span>
+                      </div>
+                      <div className="flex-1">
+                        <h3 className="text-sm font-black text-red-900 uppercase tracking-wider mb-1">
+                          🚨 Flagged for Verification
+                        </h3>
+                        <p className="text-xs text-red-700 mb-3">
+                          This sale is awaiting M-Pesa payment confirmation. As an admin, you can manually confirm this transaction.
+                        </p>
+                        <div className="bg-white rounded-lg p-3 mb-3">
+                          <div className="text-xs space-y-1">
+                            <div className="flex justify-between">
+                              <span className="text-zinc-600">Expected Amount:</span>
+                              <span className="font-bold text-zinc-900">
+                                KES{' '}
+                                {selectedSale.payments
+                                  .filter((p) => p.method === 'MPESA')
+                                  .reduce((sum, p) => sum + p.amount, 0)
+                                  .toLocaleString()}
+                              </span>
+                            </div>
+                            {selectedSale.flaggedAt && (
+                              <div className="flex justify-between">
+                                <span className="text-zinc-600">Flagged Since:</span>
+                                <span className="text-zinc-900">
+                                  {Math.floor(
+                                    (Date.now() - new Date(selectedSale.flaggedAt).getTime()) / 1000 / 60
+                                  )}{' '}
+                                  minutes ago
+                                </span>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                        <button
+                          onClick={async () => {
+                            if (!window.confirm('Are you sure you want to manually confirm this M-Pesa payment? This will unflag the sale.')) {
+                              return;
+                            }
+
+                            try {
+                              await axios.default.post(`/sales/${selectedSale.id}/confirm-verification`, {
+                                notes: 'Admin manual confirmation - payment verified through other means',
+                              });
+                              toast.success('✅ Sale verified and unflagged successfully!');
+                              setIsDetailsModalOpen(false);
+                              fetchSales(); // Refresh sales list
+                            } catch (err: any) {
+                              console.error('Verification error:', err);
+                              toast.error(err.response?.data?.message || 'Failed to verify sale');
+                            }
+                          }}
+                          className="w-full px-4 py-3 bg-red-600 text-white font-black rounded-xl hover:bg-red-700 transition-all uppercase tracking-wider shadow-lg flex items-center justify-center gap-2"
+                        >
+                          <CheckCircle2 className="w-4 h-4" />
+                          Confirm & Unflag (Admin Override)
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Status Badge */}
+                <div className="mt-6 flex items-center justify-center">
+                  {getStatusBadge(selectedSale)}
                 </div>
               </div>
             </motion.div>

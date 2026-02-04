@@ -89,7 +89,7 @@ exports.getProduct = async (req, res, next) => {
  */
 exports.createProduct = async (req, res, next) => {
   try {
-    const { distribution, ...productData } = req.body;
+    const { distribution, supplierId, buyingPrice, ...productData } = req.body;
 
     // Validate required product fields
     if (!productData.name || !productData.partNumber) {
@@ -169,7 +169,33 @@ exports.createProduct = async (req, res, next) => {
         }
       }
 
-      // Fetch the complete product with all inventory relations
+      // STEP 3: Create SupplierProduct record if supplier info is provided
+      let supplierProductCreated = false;
+      if (supplierId && buyingPrice !== undefined && buyingPrice !== null) {
+        // Validate supplierId exists
+        const supplierExists = await tx.supplier.findUnique({
+          where: { id: supplierId },
+        });
+
+        if (supplierExists) {
+          await tx.supplierProduct.create({
+            data: {
+              supplierId: supplierId,
+              productId: product.id,
+              wholesalePrice: Number(buyingPrice),
+              currency: 'KES', // Default currency
+              isAvailable: true,
+              notes: 'Auto-linked from Global Inventory',
+            },
+          });
+          supplierProductCreated = true;
+          console.log(`✅ SupplierProduct created: ${product.name} -> ${supplierExists.name}`);
+        } else {
+          console.warn(`⚠️ Supplier ${supplierId} not found, skipping SupplierProduct creation`);
+        }
+      }
+
+      // Fetch the complete product with all inventory and supplier relations
       const completeProduct = await tx.product.findUnique({
         where: { id: product.id },
         include: {
@@ -178,12 +204,18 @@ exports.createProduct = async (req, res, next) => {
               branch: true,
             },
           },
+          supplierProducts: {
+            include: {
+              supplier: true,
+            },
+          },
         },
       });
 
       return {
         product: completeProduct,
         inventoryCreated: inventoryRecords.length,
+        supplierProductCreated,
       };
     });
 
@@ -209,6 +241,7 @@ exports.createProduct = async (req, res, next) => {
       data: result.product,
       meta: {
         inventoryRecordsCreated: result.inventoryCreated,
+        supplierProductCreated: result.supplierProductCreated,
       },
     });
   } catch (error) {
@@ -225,12 +258,14 @@ exports.createProduct = async (req, res, next) => {
 
 exports.updateProduct = async (req, res, next) => {
   try {
-    const { inventoryUpdates, ...productData } = req.body;
+    const { inventoryUpdates, supplierId, buyingPrice, ...productData } = req.body;
 
     console.log('📦 Product Update Request:', {
       productId: req.params.id,
       productData,
       inventoryUpdates,
+      supplierId,
+      buyingPrice,
       userId: req.user?.id,
     });
 
@@ -393,13 +428,57 @@ exports.updateProduct = async (req, res, next) => {
         }
       }
 
-      // Fetch updated product with inventory
+      // STEP 3: Handle SupplierProduct upsert if supplier info is provided
+      if (supplierId && buyingPrice !== undefined && buyingPrice !== null) {
+        console.log(`🚚 Processing SupplierProduct: supplierId=${supplierId}, buyingPrice=${buyingPrice}`);
+
+        // Validate supplierId exists
+        const supplierExists = await tx.supplier.findUnique({
+          where: { id: supplierId },
+        });
+
+        if (supplierExists) {
+          // Upsert SupplierProduct record
+          await tx.supplierProduct.upsert({
+            where: {
+              supplierId_productId: {
+                supplierId: supplierId,
+                productId: req.params.id,
+              },
+            },
+            update: {
+              wholesalePrice: Number(buyingPrice),
+              isAvailable: true,
+              lastUpdated: new Date(),
+              notes: 'Updated from Global Inventory',
+            },
+            create: {
+              supplierId: supplierId,
+              productId: req.params.id,
+              wholesalePrice: Number(buyingPrice),
+              currency: 'KES',
+              isAvailable: true,
+              notes: 'Auto-linked from Global Inventory',
+            },
+          });
+          console.log(`✅ SupplierProduct upserted for product ${req.params.id}`);
+        } else {
+          console.warn(`⚠️ Supplier ${supplierId} not found, skipping SupplierProduct update`);
+        }
+      }
+
+      // Fetch updated product with inventory and supplier products
       return await tx.product.findUnique({
         where: { id: req.params.id },
         include: {
           inventory: {
             include: {
               branch: true,
+            },
+          },
+          supplierProducts: {
+            include: {
+              supplier: true,
             },
           },
         },

@@ -1,9 +1,10 @@
 // ============================================
 // POS PAGE - HARDWARE-GRADE POINT OF SALE
 // 60/40 Split Layout + High-Contrast Vision UI
+// ENHANCED: Full Keyboard Navigation Support
 // ============================================
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Search, Loader2, AlertCircle, RefreshCw } from 'lucide-react';
 import ProductCard from '../components/ProductCard';
 import TransactionTray from '../components/TransactionTray';
@@ -37,6 +38,14 @@ export default function POS() {
   const debouncedSearch = useDebounce(searchTerm, 300);
 
   const [checkoutModalOpen, setCheckoutModalOpen] = useState(false);
+
+  // Keyboard Navigation State
+  const [selectedProductIndex, setSelectedProductIndex] = useState<number>(-1);
+  const [focusMode, setFocusMode] = useState<'search' | 'products' | 'tray'>('search');
+
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const productGridRef = useRef<HTMLDivElement>(null);
+  const trayComponentRef = useRef<any>(null);
 
   const fetchProducts = async () => {
     setLoading(true);
@@ -77,6 +86,166 @@ export default function POS() {
     );
   });
 
+  // Auto-focus search bar on mount
+  useEffect(() => {
+    searchInputRef.current?.focus();
+  }, []);
+
+  // Ensure proper focus when mode changes
+  useEffect(() => {
+    if (focusMode === 'products' && productGridRef.current) {
+      productGridRef.current.focus();
+    }
+  }, [focusMode]);
+
+  // Reset selected product when filtered products change
+  useEffect(() => {
+    setSelectedProductIndex(-1);
+    setFocusMode('search');
+  }, [debouncedSearch]);
+
+  // Calculate grid dimensions for navigation
+  const getGridColumns = () => {
+    const width = window.innerWidth;
+    if (width >= 1536) return 3; // 2xl
+    if (width >= 768) return 2; // md
+    return 1;
+  };
+
+  // Handle keyboard navigation in search bar
+  const handleSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'ArrowDown' && filteredProducts.length > 0) {
+      e.preventDefault();
+      setSelectedProductIndex(0);
+      setFocusMode('products');
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      setSearchTerm('');
+      searchInputRef.current?.focus();
+    } else if (e.key === 'Tab' && e.shiftKey === false && filteredProducts.length > 0) {
+      e.preventDefault();
+      setFocusMode('tray');
+    }
+  };
+
+  // Handle keyboard navigation in product grid
+  const handleProductGridKeyDown = (e: React.KeyboardEvent) => {
+    if (focusMode !== 'products' || filteredProducts.length === 0) return;
+
+    const cols = getGridColumns();
+    const maxIndex = filteredProducts.length - 1;
+    const currentRow = Math.floor(selectedProductIndex / cols);
+    const currentCol = selectedProductIndex % cols;
+    const isRightmostColumn = currentCol === cols - 1;
+
+    switch (e.key) {
+      case 'ArrowUp':
+        e.preventDefault();
+        if (selectedProductIndex < cols) {
+          // Move back to search if in first row
+          setFocusMode('search');
+          setSelectedProductIndex(-1);
+          searchInputRef.current?.focus();
+        } else {
+          setSelectedProductIndex(Math.max(0, selectedProductIndex - cols));
+        }
+        break;
+
+      case 'ArrowDown':
+        e.preventDefault();
+        setSelectedProductIndex(Math.min(maxIndex, selectedProductIndex + cols));
+        break;
+
+      case 'ArrowLeft':
+        e.preventDefault();
+        setSelectedProductIndex(Math.max(0, selectedProductIndex - 1));
+        break;
+
+      case 'ArrowRight':
+        e.preventDefault();
+        // Check if we're at the rightmost column
+        if (isRightmostColumn || selectedProductIndex === maxIndex) {
+          // Move to transaction tray
+          setFocusMode('tray');
+          trayComponentRef.current?.focusFirstItem();
+        } else {
+          setSelectedProductIndex(Math.min(maxIndex, selectedProductIndex + 1));
+        }
+        break;
+
+      case 'Enter':
+      case ' ':
+        e.preventDefault();
+        if (selectedProductIndex >= 0 && selectedProductIndex <= maxIndex) {
+          const product = filteredProducts[selectedProductIndex];
+          handleAddToCart(product);
+        }
+        break;
+
+      case 'Escape':
+        e.preventDefault();
+        setFocusMode('search');
+        setSelectedProductIndex(-1);
+        searchInputRef.current?.focus();
+        break;
+
+      case 'Tab':
+        e.preventDefault();
+        if (e.shiftKey) {
+          setFocusMode('search');
+          setSelectedProductIndex(-1);
+          searchInputRef.current?.focus();
+        } else {
+          setFocusMode('tray');
+          trayComponentRef.current?.focusFirstItem();
+        }
+        break;
+    }
+  };
+
+  // Add product to cart
+  const handleAddToCart = (product: Product) => {
+    const stock = product.inventory?.[0]?.quantity || 0;
+    if (stock > 0) {
+      useStore.getState().addToCart({
+        productId: product.id,
+        name: product.name,
+        price: parseFloat(product.sellingPrice as any),
+        stock: stock,
+        oemNumber: product.partNumber,
+      });
+    }
+  };
+
+  // Scroll selected product into view and focus grid
+  useEffect(() => {
+    if (selectedProductIndex >= 0 && productGridRef.current) {
+      const productCards = productGridRef.current.querySelectorAll('[data-product-index]');
+      const selectedCard = productCards[selectedProductIndex] as HTMLElement;
+      if (selectedCard) {
+        selectedCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+      // Auto-focus the grid when a product is selected
+      if (focusMode === 'products') {
+        productGridRef.current.focus();
+      }
+    }
+  }, [selectedProductIndex, focusMode]);
+
+  // Prevent page scrolling but allow navigation handlers to work
+  useEffect(() => {
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      // Only prevent default for Space key to avoid page scroll
+      // Arrow keys are handled by individual components
+      if (e.key === ' ' && (focusMode === 'products' || focusMode === 'tray')) {
+        e.preventDefault();
+      }
+    };
+
+    window.addEventListener('keydown', handleGlobalKeyDown);
+    return () => window.removeEventListener('keydown', handleGlobalKeyDown);
+  }, [focusMode]);
+
   return (
     // Changed main background to a deeper black to make white cards "pop"
     <div className="flex h-[calc(100vh-var(--topbar-height))] overflow-hidden bg-[#09090b]">
@@ -84,16 +253,18 @@ export default function POS() {
       {/* ===== MAIN PRODUCT AREA (60%) ===== */}
       <div className="w-[60%] flex flex-col overflow-hidden border-r border-zinc-800/50">
         
-        {/* Search Bar - Modernized with better contrast */}
+        {/* Search Bar - Modernized with better contrast + Keyboard Shortcuts */}
         <div className="p-6 border-b border-zinc-800/50 bg-[#09090b]">
           <div className="flex items-center gap-4">
             <div className="flex-1 relative">
               <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-zinc-500" />
               <input
+                ref={searchInputRef}
                 type="text"
                 autoFocus
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
+                onKeyDown={handleSearchKeyDown}
                 placeholder="Search by product name, OEM, or model..."
                 className="w-full pl-12 pr-4 py-3.5 bg-zinc-900/50 border border-zinc-800 rounded-xl text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 transition-all shadow-inner"
               />
@@ -116,8 +287,14 @@ export default function POS() {
           )}
         </div>
 
-        {/* Product Grid Area - Using a slightly lighter zinc for the "floor" */}
-        <div className="flex-1 overflow-y-auto p-6 bg-zinc-950/30">
+        {/* Product Grid Area - Using a slightly lighter zinc for the "floor" + Keyboard Navigation */}
+        <div
+          ref={productGridRef}
+          className="flex-1 overflow-y-auto p-6 bg-zinc-950/30 focus:outline-none transition-all relative"
+          onKeyDown={handleProductGridKeyDown}
+          tabIndex={focusMode === 'products' ? 0 : -1}
+          style={{ scrollBehavior: 'smooth' }}
+        >
           {loading ? (
             <div className="flex items-center justify-center h-full">
               <Loader2 className="w-10 h-10 text-blue-500 animate-spin" />
@@ -145,7 +322,7 @@ export default function POS() {
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 2xl:grid-cols-3 gap-6">
-              {filteredProducts.map((product) => (
+              {filteredProducts.map((product, index) => (
                 <ProductCard
                   key={product.id}
                   productId={product.id}
@@ -154,6 +331,9 @@ export default function POS() {
                   price={parseFloat(product.sellingPrice as any)}
                   stock={product.inventory?.[0]?.quantity || 0}
                   lowStockThreshold={product.lowStockThreshold}
+                  isSelected={selectedProductIndex === index}
+                  dataIndex={index}
+                  onSelect={() => handleAddToCart(product)}
                 />
               ))}
             </div>
@@ -163,7 +343,22 @@ export default function POS() {
 
       {/* ===== TRANSACTION TRAY (40%) ===== */}
       <div className="w-[40%] flex flex-col bg-[#09090b] shadow-2xl z-10">
-        <TransactionTray onCheckout={() => setCheckoutModalOpen(true)} />
+        <TransactionTray
+          ref={trayComponentRef}
+          onCheckout={() => setCheckoutModalOpen(true)}
+          isFocused={focusMode === 'tray'}
+          onFocusSearch={() => {
+            setFocusMode('search');
+            searchInputRef.current?.focus();
+          }}
+          onFocusProducts={() => {
+            setFocusMode('products');
+            if (selectedProductIndex < 0 && filteredProducts.length > 0) {
+              setSelectedProductIndex(0);
+            }
+            productGridRef.current?.focus();
+          }}
+        />
       </div>
 
       {/* ===== CHECKOUT MODAL ===== */}

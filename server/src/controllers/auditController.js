@@ -1,15 +1,23 @@
 const prisma = require('../utils/prisma');
 const { Queue } = require('bullmq');
-const redis = require('../utils/redis');
+const { redis, isRedisAvailable } = require('../utils/redis');
 
-const exportQueue = new Queue('audit-exports', { connection: redis });
+// Only create queue if Redis is available
+let exportQueue = null;
+
+const initQueue = () => {
+  if (isRedisAvailable() && !exportQueue) {
+    exportQueue = new Queue('audit-exports', { connection: redis });
+  }
+  return exportQueue;
+};
 
 exports.getAuditLogs = async (req, res, next) => {
   try {
-    const { 
-      entityType, 
-      action, 
-      userId, 
+    const {
+      entityType,
+      action,
+      userId,
       startDate,
       endDate,
       page = 1,
@@ -58,18 +66,59 @@ exports.exportAuditLogs = async (req, res, next) => {
   try {
     const { startDate, endDate, format = 'csv' } = req.query;
 
-    // Queue the export job
-    const job = await exportQueue.add('export-audit-logs', {
-      userId: req.user.id,
-      startDate,
-      endDate,
-      format,
+    // Try to use queue if Redis is available
+    const queue = initQueue();
+    if (queue) {
+      const job = await queue.add('export-audit-logs', {
+        userId: req.user.id,
+        startDate,
+        endDate,
+        format,
+      });
+
+      return res.json({
+        message: 'Export queued',
+        jobId: job.id,
+      });
+    }
+
+    // Fallback: Process export synchronously without Redis
+    const where = {};
+    if (startDate || endDate) {
+      where.createdAt = {};
+      if (startDate) where.createdAt.gte = new Date(startDate);
+      if (endDate) where.createdAt.lte = new Date(endDate);
+    }
+
+    const logs = await prisma.auditLog.findMany({
+      where,
+      include: { user: { select: { name: true, email: true } } },
+      orderBy: { createdAt: 'desc' },
     });
 
-    res.json({
-      message: 'Export queued',
-      jobId: job.id,
-    });
+    if (format === 'csv') {
+      const headers = ['ID', 'Entity Type', 'Entity ID', 'Action', 'User', 'Changes', 'Created At'];
+      const rows = logs.map(log => [
+        log.id,
+        log.entityType,
+        log.entityId,
+        log.action,
+        log.user?.name || 'System',
+        JSON.stringify(log.changes || {}),
+        log.createdAt.toISOString(),
+      ]);
+
+      const csv = [headers.join(','), ...rows.map(r => r.map(v => `"${v}"`).join(','))].join('\n');
+
+      res.setHeader('Content-Type', 'text/csv');
+      res.setHeader('Content-Disposition', `attachment; filename=audit-logs-${Date.now()}.csv`);
+      return res.send(csv);
+    }
+
+    // JSON format
+    res.setHeader('Content-Type', 'application/json');
+    res.setHeader('Content-Disposition', `attachment; filename=audit-logs-${Date.now()}.json`);
+    return res.json(logs);
   } catch (error) {
     next(error);
   }

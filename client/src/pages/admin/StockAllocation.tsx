@@ -1,8 +1,15 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import { useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Search, Plus, ArrowRight, Save, Package, AlertTriangle, CheckCircle2, Building2 } from 'lucide-react';
+import { Search, Plus, ArrowRight, Save, Package, Building2 } from 'lucide-react';
 import axios from '../../api/axios';
 import { toast, Toaster } from 'sonner';
+
+// Navigation state from BranchOrders page
+interface LocationState {
+  autoSelectProductId?: string;
+  highlightBranchIds?: string[];
+}
 
 // ============================================
 // TYPE DEFINITIONS
@@ -62,14 +69,21 @@ const playSuccessSound = () => {
 // ============================================
 
 export default function StockAllocation() {
+  const location = useLocation();
+  const locationState = location.state as LocationState | null;
+
   const [branches, setBranches] = useState<Branch[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<Product[]>([]);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [allocations, setAllocations] = useState<Record<string, AllocationState>>({});
-  const [loading, setLoading] = useState(false);
+  const [_loading, _setLoading] = useState(false);
   const [searching, setSearching] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+
+  // Highlight state for branches (from BranchOrders navigation)
+  const [highlightBranchIds, setHighlightBranchIds] = useState<string[]>([]);
+  const hasAutoSelected = useRef(false);
 
   // ============================================
   // FETCH BRANCHES ON MOUNT
@@ -87,6 +101,71 @@ export default function StockAllocation() {
 
     fetchBranches();
   }, []);
+
+  // ============================================
+  // AUTO-SELECT PRODUCT FROM NAVIGATION STATE
+  // ============================================
+  useEffect(() => {
+    const autoSelectProduct = async () => {
+      // Only run once and only if we have the required state
+      if (hasAutoSelected.current || !locationState?.autoSelectProductId || branches.length === 0) {
+        return;
+      }
+
+      hasAutoSelected.current = true;
+
+      // Set highlight branch IDs
+      if (locationState.highlightBranchIds) {
+        setHighlightBranchIds(locationState.highlightBranchIds);
+
+        // Clear highlight after 5 seconds
+        setTimeout(() => {
+          setHighlightBranchIds([]);
+        }, 5000);
+      }
+
+      // Fetch the product directly by ID
+      try {
+        const response = await axios.get(`/products/${locationState.autoSelectProductId}`);
+        const productData = response.data.data || response.data;
+
+        if (productData) {
+          // Transform to match Product interface
+          const product: Product = {
+            id: productData.id,
+            name: productData.name,
+            partNumber: productData.partNumber,
+            vehicleMake: productData.vehicleMake,
+            vehicleModel: productData.vehicleModel,
+            category: productData.category,
+            inventory: (productData.inventory || []).map((inv: any) => ({
+              branchId: inv.branchId,
+              branch: {
+                id: inv.branchId,
+                name: inv.branch?.name || 'Unknown',
+              },
+              quantity: inv.quantity || 0,
+            })),
+          };
+
+          // Auto-select the product (this triggers handleSelectProduct logic)
+          handleSelectProduct(product);
+
+          toast.info('Product loaded from Branch Orders', {
+            description: `${product.name} - Ready for allocation`,
+            duration: 3000,
+          });
+        }
+      } catch (err) {
+        console.error('Failed to auto-select product:', err);
+        toast.error('Failed to load product', {
+          description: 'Please search for the product manually',
+        });
+      }
+    };
+
+    autoSelectProduct();
+  }, [locationState, branches]);
 
   // ============================================
   // SEARCH PRODUCTS WITH DEBOUNCE
@@ -465,20 +544,44 @@ export default function StockAllocation() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-zinc-800">
-                      {Object.values(allocations).map((allocation, index) => (
+                      {Object.values(allocations).map((allocation, index) => {
+                        const isHighlighted = highlightBranchIds.includes(allocation.branchId);
+
+                        return (
                         <motion.tr
                           key={allocation.branchId}
                           initial={{ opacity: 0, x: -10 }}
-                          animate={{ opacity: 1, x: 0 }}
-                          transition={{ delay: index * 0.05 }}
-                          className="hover:bg-zinc-900/50 transition-colors"
+                          animate={{
+                            opacity: 1,
+                            x: 0,
+                            scale: isHighlighted ? [1, 1.01, 1] : 1,
+                          }}
+                          transition={{
+                            delay: index * 0.05,
+                            scale: {
+                              repeat: isHighlighted ? 3 : 0,
+                              duration: 0.5,
+                            },
+                          }}
+                          className={`
+                            transition-colors
+                            ${isHighlighted
+                              ? 'bg-blue-500/10 ring-2 ring-blue-500/50 ring-inset'
+                              : 'hover:bg-zinc-900/50'
+                            }
+                          `}
                         >
                           <td className="px-6 py-4">
                             <div className="flex items-center gap-3">
-                              <div className="w-2 h-2 rounded-full bg-emerald-500" />
+                              <div className={`w-2 h-2 rounded-full ${isHighlighted ? 'bg-blue-500 animate-pulse' : 'bg-emerald-500'}`} />
                               <span className="font-bold text-zinc-300">
                                 {allocation.branchName}
                               </span>
+                              {isHighlighted && (
+                                <span className="px-2 py-0.5 bg-blue-500/20 border border-blue-500/30 rounded text-[10px] font-bold text-blue-400 uppercase tracking-wider animate-pulse">
+                                  Requested
+                                </span>
+                              )}
                             </div>
                           </td>
                           <td className="px-6 py-4 text-right">
@@ -520,7 +623,8 @@ export default function StockAllocation() {
                             </div>
                           </td>
                         </motion.tr>
-                      ))}
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>

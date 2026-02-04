@@ -6,6 +6,26 @@ const prisma = new PrismaClient();
 async function main() {
   console.log('🌱 Seeding database...\n');
 
+  // Clear existing data in correct order (respecting foreign key constraints)
+  console.log('🧹 Clearing existing data...');
+  
+  // Delete in order based on dependencies
+  await prisma.creditPayment.deleteMany({});
+  await prisma.salePayment.deleteMany({});
+  await prisma.saleItem.deleteMany({});
+  await prisma.sale.deleteMany({});
+  await prisma.customer.deleteMany({});
+  await prisma.stockMovement.deleteMany({});
+  await prisma.transferItem.deleteMany({});
+  await prisma.transfer.deleteMany({});
+  await prisma.auditLog.deleteMany({});
+  await prisma.inventory.deleteMany({});
+  await prisma.product.deleteMany({});
+  await prisma.user.deleteMany({});
+  await prisma.branch.deleteMany({});
+  
+  console.log('✅ Database cleared\n');
+
   // Create branches
   const branches = await Promise.all([
     prisma.branch.create({
@@ -48,7 +68,7 @@ async function main() {
     prisma.user.create({
       data: {
         name: 'Uncle (Owner)',
-        email: 'owner@pram.demo',
+        email: 'owner@pram.co.ke',
         password: hashedPassword,
         role: 'OWNER',
         phone: '+254700000000',
@@ -57,7 +77,7 @@ async function main() {
     prisma.user.create({
       data: {
         name: 'JOMOG (Overseer)',
-        email: 'overseer@pram.demo',
+        email: 'overseer@pram.co.ke',
         password: hashedPassword,
         role: 'ADMIN',
         branchId: branches[0].id,
@@ -66,8 +86,18 @@ async function main() {
     }),
     prisma.user.create({
       data: {
+        name: 'Main Branch Manager',
+        email: 'mainbranch@pram.co.ke',
+        password: hashedPassword,
+        role: 'MANAGER',
+        branchId: branches[0].id,
+        phone: '+254700000010',
+      },
+    }),
+    prisma.user.create({
+      data: {
         name: 'Kiserian Manager',
-        email: 'kiserian@pram.demo',
+        email: 'kiserian@pram.co.ke',
         password: hashedPassword,
         role: 'MANAGER',
         branchId: branches[1].id,
@@ -76,7 +106,7 @@ async function main() {
     prisma.user.create({
       data: {
         name: 'Kisumu Manager',
-        email: 'kisumu@pram.demo',
+        email: 'kisumu@pram.co.ke',
         password: hashedPassword,
         role: 'MANAGER',
         branchId: branches[2].id,
@@ -85,7 +115,7 @@ async function main() {
     prisma.user.create({
       data: {
         name: 'Kakamega Manager',
-        email: 'kakamega@pram.demo',
+        email: 'kakamega@pram.co.ke',
         password: hashedPassword,
         role: 'MANAGER',
         branchId: branches[3].id,
@@ -95,9 +125,12 @@ async function main() {
 
   console.log('✅ Users created');
   console.log('\n📧 Login credentials:');
-  console.log('   owner@pram.demo / password123 (OWNER)');
-  console.log('   overseer@pram.demo / password123 (ADMIN)');
-  console.log('   kiserian@pram.demo / password123 (MANAGER)\n');
+  console.log('   owner@pram.co.ke / password123 (OWNER)');
+  console.log('   overseer@pram.co.ke / password123 (ADMIN)');
+  console.log('   mainbranch@pram.co.ke / password123 (MANAGER - Main Branch)');
+  console.log('   kiserian@pram.co.ke / password123 (MANAGER)');
+  console.log('   kisumu@pram.co.ke / password123 (MANAGER)');
+  console.log('   kakamega@pram.co.ke / password123 (MANAGER)\n');
 
   // Create products
   const productsData = [

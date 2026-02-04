@@ -79,6 +79,60 @@ exports.adjustStock = async (req, res, next) => {
         },
       });
 
+      // ============================================
+      // CLOSED LOOP FULFILLMENT - "Hunter" Logic
+      // When stock is ADDED, auto-complete matching Branch Orders
+      // ============================================
+      if (quantity > oldInventory.quantity) {
+        // Find pending transfer requests FROM this branch for this product
+        // (Branch Orders where this branch requested stock for this product)
+        const pendingTransfers = await tx.transfer.findMany({
+          where: {
+            fromBranchId: branchId,
+            status: { in: ['REQUESTED', 'APPROVED'] },
+            items: {
+              some: { productId: productId },
+            },
+          },
+          select: { id: true, transferNumber: true },
+        });
+
+        if (pendingTransfers.length > 0) {
+          // Update all matching transfers to RECEIVED status
+          await tx.transfer.updateMany({
+            where: {
+              id: { in: pendingTransfers.map((t) => t.id) },
+            },
+            data: {
+              status: 'RECEIVED',
+              receivedAt: new Date(),
+            },
+          });
+
+          // Log the auto-completion for audit trail
+          for (const transfer of pendingTransfers) {
+            await tx.auditLog.create({
+              data: {
+                userId: req.user.id,
+                action: 'TRANSFER_AUTO_COMPLETED',
+                entityType: 'Transfer',
+                entityId: transfer.id,
+                oldValue: { status: 'REQUESTED' },
+                newValue: {
+                  status: 'RECEIVED',
+                  reason: 'Auto-completed via stock allocation',
+                  productId,
+                  branchId,
+                },
+                ipAddress: req.ipAddress,
+              },
+            });
+          }
+
+          console.log(`[Closed Loop] Auto-completed ${pendingTransfers.length} transfer(s) for product ${productId} at branch ${branchId}`);
+        }
+      }
+
       return inventory;
     });
 

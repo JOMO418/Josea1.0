@@ -109,6 +109,7 @@ exports.getOverseerDashboard = async (req, res, next) => {
         id: b.id,
         name: b.name,
         location: b.location,
+        isActive: b.isActive,
       })),
     };
 

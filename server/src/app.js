@@ -12,6 +12,11 @@ const transferRoutes = require('./routes/transfers');
 const dashboardRoutes = require('./routes/dashboard');
 const auditRoutes = require('./routes/audit');
 const adminRoutes = require('./routes/admin');
+const customerRoutes = require('./routes/customers');
+const branchRoutes = require('./routes/branches');
+const procurementRoutes = require('./routes/procurement');
+const settingsRoutes = require('./routes/settings');
+const mpesaRoutes = require('./routes/mpesa');
 
 // Import middleware (same directory level)
 const errorHandler = require('./middleware/errorHandler');
@@ -19,9 +24,12 @@ const errorHandler = require('./middleware/errorHandler');
 const app = express();
 
 // ===== CORS CONFIGURATION (MUST BE FIRST) =====
-// Allow frontend on port 3001 (Vite default after update)
+// Allow frontend on multiple ports (Vite auto-selects available port)
 const allowedOrigins = process.env.ALLOWED_ORIGINS?.split(',') || [
   'http://localhost:3001',
+  'http://localhost:3002',
+  'http://localhost:3003',
+  'http://localhost:3004',
   'http://localhost:3000', // Fallback for legacy
 ];
 
@@ -69,6 +77,13 @@ app.use('/api/transfers', transferRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/audit', auditRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/customers', customerRoutes);
+app.use('/api/branches', branchRoutes);
+app.use('/api/procurement', procurementRoutes);
+app.use('/api/settings', settingsRoutes);
+// M-Pesa routes - use /api/payment to avoid Safaricom "URL contains MPESA" validation error
+app.use('/api/payment', mpesaRoutes);
+app.use('/api/mpesa', mpesaRoutes); // Keep for backward compatibility
 
 // 404 handler for undefined routes
 app.use((req, res, next) => {

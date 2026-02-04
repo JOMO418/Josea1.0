@@ -454,3 +454,200 @@ exports.getTransfer = async (req, res, next) => {
     next(error);
   }
 };
+
+// ===================================
+// GET BRANCH ORDER STREAM (Admin View - Branch Orders History)
+// Fetches last 100 transfers for the order ledger view
+// ===================================
+exports.getPendingRequests = async (req, res, next) => {
+  try {
+    const { branchId } = req.query;
+
+    // Build where clause - fetch ALL transfers (history view)
+    // No status filter - we want to see the full order stream
+    const where = {};
+
+    // Filter by specific branch if provided
+    if (branchId) {
+      where.fromBranchId = branchId;
+    }
+
+    console.log('📋 Fetching Branch Order Stream:', where);
+
+    const transfers = await prisma.transfer.findMany({
+      where,
+      take: 100, // Last 100 transfers for history
+      include: {
+        items: {
+          include: {
+            product: {
+              select: {
+                id: true,
+                name: true,
+                partNumber: true,
+                vehicleMake: true,
+                vehicleModel: true,
+              },
+            },
+          },
+        },
+        fromBranch: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+        toBranch: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+        requestedBy: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+      },
+      orderBy: { requestedAt: 'desc' }, // Newest first
+    });
+
+    console.log(`✅ Found ${transfers.length} transfers in order stream`);
+
+    res.json({
+      success: true,
+      data: transfers,
+    });
+  } catch (error) {
+    console.error('Get Branch Order Stream error:', error);
+    next(error);
+  }
+};
+
+// ===================================
+// UPDATE TRANSFER STATUS (Admin Action)
+// Hub-and-Spoke: Admin approves or rejects branch requests
+// ===================================
+exports.updateTransferStatus = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { status, notes } = req.body;
+
+    // Validate status
+    // APPROVED = Admin has seen/acknowledged the request (ready for processing)
+    // CANCELLED = Admin has rejected the request
+    const validStatuses = ['APPROVED', 'CANCELLED'];
+    if (!validStatuses.includes(status)) {
+      return res.status(400).json({
+        message: `Invalid status. Must be one of: ${validStatuses.join(', ')}`,
+      });
+    }
+
+    console.log(`📝 Admin updating Transfer ${id} to status: ${status}`);
+
+    const result = await prisma.$transaction(async (tx) => {
+      // Get existing transfer
+      const existingTransfer = await tx.transfer.findUnique({
+        where: { id },
+        include: {
+          items: { include: { product: true } },
+          toBranch: true,
+        },
+      });
+
+      if (!existingTransfer) {
+        throw new Error('Transfer not found');
+      }
+
+      // Build update data
+      const updateData = {
+        status,
+        notes: notes ? `${existingTransfer.notes || ''}\n${notes}` : existingTransfer.notes,
+      };
+
+      // If approving, log who approved and when
+      if (status === 'APPROVED') {
+        updateData.approvedById = req.user.id;
+        updateData.approvedAt = new Date();
+        console.log(`✅ Transfer approved by user: ${req.user.id}`);
+      }
+
+      // Update transfer status
+      const updatedTransfer = await tx.transfer.update({
+        where: { id },
+        data: updateData,
+        include: {
+          items: {
+            include: {
+              product: {
+                select: {
+                  id: true,
+                  name: true,
+                  partNumber: true,
+                },
+              },
+            },
+          },
+          toBranch: {
+            select: {
+              id: true,
+              name: true,
+            },
+          },
+          requestedBy: {
+            select: {
+              id: true,
+              name: true,
+            },
+          },
+          approvedBy: {
+            select: {
+              id: true,
+              name: true,
+            },
+          },
+        },
+      });
+
+      // Create audit log
+      await tx.auditLog.create({
+        data: {
+          userId: req.user.id,
+          action: `TRANSFER_${status}`,
+          entityType: 'Transfer',
+          entityId: updatedTransfer.id,
+          oldValue: JSON.stringify({ status: existingTransfer.status }),
+          newValue: JSON.stringify({
+            status,
+            notes,
+            approvedById: status === 'APPROVED' ? req.user.id : undefined,
+            approvedAt: status === 'APPROVED' ? updateData.approvedAt : undefined,
+          }),
+          ipAddress: req.ipAddress,
+        },
+      });
+
+      return updatedTransfer;
+    });
+
+    // Emit socket events to notify branch
+    emitToBranch(result.toBranchId, 'transfer.statusChanged', result);
+    emitToOverseer('transfer.statusChanged', result);
+
+    const message = status === 'APPROVED'
+      ? 'Request approved - Ready for allocation'
+      : 'Request cancelled';
+
+    console.log(`✅ Transfer ${id} updated to ${status}`);
+
+    res.json({
+      success: true,
+      data: result,
+      message,
+    });
+  } catch (error) {
+    console.error('Update Transfer Status error:', error);
+    next(error);
+  }
+};

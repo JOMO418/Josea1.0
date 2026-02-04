@@ -11,6 +11,7 @@ import {
   ClipboardList,
   TrendingUp,
   CreditCard,
+  Users,
   X,
   LogOut,
   type LucideIcon,
@@ -23,12 +24,14 @@ interface NavItem {
   label: string;
   path: string;
   icon: LucideIcon;
+  branded?: boolean;
 }
 
 const NAV_ITEMS: NavItem[] = [
-  { label: 'POS', path: '/pos', icon: ShoppingCart },
+  { label: 'Josea POS', path: '/pos', icon: ShoppingCart, branded: true },
   { label: 'Sales', path: '/sales', icon: TrendingUp },
   { label: 'My Stock', path: '/inventory', icon: Package },
+  { label: 'Customers', path: '/customers', icon: Users },
   { label: 'Restock', path: '/restock', icon: ClipboardList },
   { label: 'Debts', path: '/debts', icon: CreditCard },
   { label: 'Dashboard', path: '/', icon: LayoutDashboard },
@@ -110,7 +113,14 @@ export default function Sidebar() {
                     `}
                   >
                     <Icon size={20} />
-                    <span className="font-medium">{item.label}</span>
+                    {item.branded ? (
+                      <span className="font-medium">
+                        <span className="text-purple-300 font-bold italic drop-shadow-[0_0_8px_rgba(168,85,247,0.5)]">Josea</span>
+                        <span> POS</span>
+                      </span>
+                    ) : (
+                      <span className="font-medium">{item.label}</span>
+                    )}
                   </Link>
                 </li>
               );

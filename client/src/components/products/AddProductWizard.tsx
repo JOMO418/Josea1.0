@@ -6,10 +6,12 @@ import {
   ChevronLeft,
   Check,
   Package,
-  DollarSign,
   Building2,
   CheckCircle2,
   AlertCircle,
+  Truck,
+  DollarSign,
+  ChevronDown,
 } from 'lucide-react';
 import axios from '../../api/axios';
 import { toast } from 'sonner';
@@ -21,6 +23,14 @@ import { toast } from 'sonner';
 interface Branch {
   id: string;
   name: string;
+  isActive: boolean;
+}
+
+interface Supplier {
+  id: string;
+  name: string;
+  location: string;
+  branchName: string;
   isActive: boolean;
 }
 
@@ -42,12 +52,15 @@ interface ProductFormData {
   costPrice: number | string;
   sellingPrice: number | string;
   lowStockThreshold: number | string;
+  supplierId: string;
+  buyingPrice: number | string;
 }
 
 interface AddProductWizardProps {
   isOpen: boolean;
   onClose: () => void;
   branches: Branch[];
+  suppliers?: Supplier[];
   onSuccess: () => void;
 }
 
@@ -109,6 +122,7 @@ export default function AddProductWizard({
   isOpen,
   onClose,
   branches,
+  suppliers = [],
   onSuccess,
 }: AddProductWizardProps) {
   const [currentStep, setCurrentStep] = useState(0);
@@ -140,6 +154,8 @@ export default function AddProductWizard({
     costPrice: '',
     sellingPrice: '',
     lowStockThreshold: 5,
+    supplierId: '',
+    buyingPrice: '',
   });
 
   // Distribution state
@@ -274,6 +290,11 @@ export default function AddProductWizard({
         lowStockThreshold: Number(formData.lowStockThreshold),
         isActive: true,
         distribution: distributionPayload,
+        // Optional: Procurement link - only include if supplier is selected
+        ...(formData.supplierId && {
+          supplierId: formData.supplierId,
+          buyingPrice: formData.buyingPrice ? Number(formData.buyingPrice) : null,
+        }),
       };
 
       console.log('📦 Creating product with payload:', payload);
@@ -538,6 +559,75 @@ export default function AddProductWizard({
                           Number(formData.sellingPrice) - Number(formData.costPrice)
                         ).toFixed(2)}
                       </span>
+                    </div>
+                  </div>
+                )}
+
+                {/* Procurement Link Section (Optional) */}
+                {suppliers.length > 0 && (
+                  <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl p-5">
+                    <div className="flex items-center gap-2 mb-4">
+                      <Truck className="w-4 h-4 text-blue-400" />
+                      <h4 className="text-sm font-bold text-zinc-300 uppercase tracking-wider">
+                        Procurement Link
+                      </h4>
+                      <span className="text-[10px] text-zinc-600 bg-zinc-800 px-2 py-0.5 rounded-full">
+                        Optional
+                      </span>
+                    </div>
+                    <p className="text-xs text-zinc-500 mb-4">
+                      Link this product to a supplier to automatically populate the Procurement Catalog.
+                    </p>
+
+                    <div className="grid grid-cols-2 gap-6">
+                      <div className="space-y-2">
+                        <label className="block text-xs font-bold text-blue-400 uppercase tracking-wider">
+                          Supplier
+                        </label>
+                        <div className="relative">
+                          <Truck className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
+                          <select
+                            value={formData.supplierId}
+                            onChange={(e) =>
+                              setFormData({ ...formData, supplierId: e.target.value })
+                            }
+                            className="w-full pl-10 pr-10 py-3 bg-zinc-900 border border-zinc-700 rounded-xl text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all appearance-none cursor-pointer"
+                          >
+                            <option value="">No Supplier Linked</option>
+                            {suppliers.filter(s => s.isActive).map((supplier) => (
+                              <option key={supplier.id} value={supplier.id}>
+                                {supplier.name} ({supplier.location})
+                              </option>
+                            ))}
+                          </select>
+                          <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500 pointer-events-none" />
+                        </div>
+                      </div>
+                      <div className="space-y-2">
+                        <label className="block text-xs font-bold text-amber-400 uppercase tracking-wider">
+                          Buying Price (KES)
+                        </label>
+                        <div className="relative">
+                          <DollarSign className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
+                          <input
+                            type="number"
+                            placeholder="Wholesale price"
+                            value={formData.buyingPrice}
+                            onChange={(e) =>
+                              setFormData({ ...formData, buyingPrice: e.target.value })
+                            }
+                            disabled={!formData.supplierId}
+                            className={`w-full pl-10 pr-4 py-3 bg-zinc-900 border rounded-xl font-mono placeholder-zinc-600 focus:ring-2 focus:ring-amber-500 focus:border-transparent transition-all ${
+                              !formData.supplierId
+                                ? 'border-zinc-800/50 text-zinc-600 cursor-not-allowed'
+                                : 'border-zinc-700 text-amber-400'
+                            }`}
+                          />
+                        </div>
+                        {!formData.supplierId && (
+                          <p className="text-[10px] text-zinc-600">Select a supplier first</p>
+                        )}
+                      </div>
                     </div>
                   </div>
                 )}

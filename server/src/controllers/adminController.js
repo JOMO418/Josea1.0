@@ -831,6 +831,135 @@ exports.getCommandCenterStats = async (req, res, next) => {
     }));
 
     // ============================================
+    // WEEKLY BRANCH COMPARISON (7 days per branch)
+    // ============================================
+
+    const weeklyBranchDataRaw = await prisma.$queryRaw`
+      SELECT
+        DATE(s."createdAt" + INTERVAL '3 hours') as date,
+        b.name as branch,
+        COALESCE(SUM(s.total), 0) as revenue,
+        COUNT(s.id)::int as transactions
+      FROM "Branch" b
+      LEFT JOIN "Sale" s ON s."branchId" = b.id
+        AND s."createdAt" >= ${last7Days}
+        AND s."createdAt" < ${tomorrowStart}
+        AND s."isReversed" = false
+      WHERE b."isActive" = true
+      GROUP BY DATE(s."createdAt" + INTERVAL '3 hours'), b.name
+      ORDER BY date ASC, b.name
+    `;
+
+    const weeklyBranchSerialized = serializeBigInt(weeklyBranchDataRaw);
+
+    // Get all branch names
+    const branchNames = [...new Set(branchPerformanceSerialized.map(b => b.name))];
+
+    // Transform to chart format: [{ date: 'Mon', Branch1: value, Branch2: value }]
+    const weeklyBranchChart = [];
+    for (let i = 0; i < 7; i++) {
+      const utcDate = new Date(last7Days.getTime() + (i * 24 * 3600000));
+      const kenyaDateForDay = new Date(utcDate.getTime() + (3600000 * KENYA_OFFSET_HOURS));
+      const dayName = format(kenyaDateForDay, 'EEE');
+      const kenyaDateStr = format(kenyaDateForDay, 'yyyy-MM-dd');
+
+      const dayData = { date: dayName };
+
+      // Initialize all branches with 0
+      branchNames.forEach(branch => {
+        dayData[branch] = 0;
+      });
+
+      // Fill in actual data
+      weeklyBranchSerialized
+        .filter(item => item.date === kenyaDateStr)
+        .forEach(item => {
+          dayData[item.branch] = Number(item.revenue) || 0;
+        });
+
+      weeklyBranchChart.push(dayData);
+    }
+
+    // ============================================
+    // BRANCH RANKINGS WITH TRENDS (Today vs Yesterday)
+    // ============================================
+
+    const yesterdayBranchRaw = await prisma.$queryRaw`
+      SELECT
+        b.name,
+        COALESCE(SUM(s.total), 0) as revenue
+      FROM "Branch" b
+      LEFT JOIN "Sale" s ON s."branchId" = b.id
+        AND s."createdAt" >= ${yesterday}
+        AND s."createdAt" < ${today}
+        AND s."isReversed" = false
+      WHERE b."isActive" = true
+      GROUP BY b.id, b.name
+    `;
+
+    const yesterdayBranchSerialized = serializeBigInt(yesterdayBranchRaw);
+    const yesterdayMap = new Map(yesterdayBranchSerialized.map(b => [b.name, Number(b.revenue) || 0]));
+
+    // Calculate rankings and trends
+    const totalTodayRevenue = branchPerformance.reduce((sum, b) => sum + b.revenue, 0);
+
+    const branchRankings = branchPerformanceSerialized.map((item, index) => {
+      const todayRev = Number(item.revenue) || 0;
+      const yesterdayRev = yesterdayMap.get(item.name) || 0;
+      const trend = yesterdayRev > 0
+        ? ((todayRev - yesterdayRev) / yesterdayRev) * 100
+        : (todayRev > 0 ? 100 : 0);
+      const contribution = totalTodayRevenue > 0
+        ? (todayRev / totalTodayRevenue) * 100
+        : 0;
+
+      return {
+        rank: index + 1,
+        name: item.name,
+        todayRevenue: todayRev,
+        yesterdayRevenue: yesterdayRev,
+        transactions: Number(item.transactions) || 0,
+        trend: Math.round(trend * 100) / 100,
+        contribution: Math.round(contribution * 100) / 100,
+      };
+    });
+
+    // ============================================
+    // WEEK TOTALS COMPARISON (This Week vs Last Week)
+    // ============================================
+
+    const lastWeekStart = new Date(last7Days.getTime() - (7 * 24 * 3600000));
+
+    const [thisWeekTotalRaw, lastWeekTotalRaw] = await Promise.all([
+      prisma.$queryRaw`
+        SELECT COALESCE(SUM(total), 0) as revenue
+        FROM "Sale"
+        WHERE "createdAt" >= ${last7Days}
+          AND "createdAt" < ${tomorrowStart}
+          AND "isReversed" = false
+      `,
+      prisma.$queryRaw`
+        SELECT COALESCE(SUM(total), 0) as revenue
+        FROM "Sale"
+        WHERE "createdAt" >= ${lastWeekStart}
+          AND "createdAt" < ${last7Days}
+          AND "isReversed" = false
+      `,
+    ]);
+
+    const thisWeekTotal = Number(serializeBigInt(thisWeekTotalRaw)?.[0]?.revenue) || 0;
+    const lastWeekTotal = Number(serializeBigInt(lastWeekTotalRaw)?.[0]?.revenue) || 0;
+    const weekOverWeekTrend = lastWeekTotal > 0
+      ? ((thisWeekTotal - lastWeekTotal) / lastWeekTotal) * 100
+      : (thisWeekTotal > 0 ? 100 : 0);
+
+    const weekComparison = {
+      thisWeek: thisWeekTotal,
+      lastWeek: lastWeekTotal,
+      trend: Math.round(weekOverWeekTrend * 100) / 100,
+    };
+
+    // ============================================
     // RECENT ACTIVITY (Live Feed)
     // ============================================
 
@@ -882,6 +1011,11 @@ exports.getCommandCenterStats = async (req, res, next) => {
       chartData,
       branchPerformance,
       recentActivity,
+      // New branch comparison data
+      weeklyBranchChart,
+      branchRankings,
+      weekComparison,
+      branchNames,
     };
 
     // Final logging before sending
@@ -921,6 +1055,10 @@ exports.getCommandCenterStats = async (req, res, next) => {
       chartData: [],
       branchPerformance: [],
       recentActivity: [],
+      weeklyBranchChart: [],
+      branchRankings: [],
+      weekComparison: { thisWeek: 0, lastWeek: 0, trend: 0 },
+      branchNames: [],
       error: true,
       errorMessage: 'System temporarily unavailable. Please try again.',
     };
@@ -951,6 +1089,480 @@ exports.getBranches = async (req, res, next) => {
     });
   } catch (error) {
     console.error('âŒ Get branches error:', error);
+    next(error);
+  }
+};
+/**
+ * Get Users with Operational Intelligence
+ * Returns all users with real-time performance metrics for Access Control
+ */
+exports.getUsers = async (req, res, next) => {
+  try {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    // Fetch all users with branch info
+    const users = await prisma.user.findMany({
+      orderBy: [{ role: 'asc' }, { name: 'asc' }],
+      include: {
+        branch: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+      },
+    });
+
+    // Get today's sales stats per user (count and volume)
+    const todaySalesStats = await prisma.$queryRaw`
+      SELECT
+        "userId",
+        COUNT(*)::int as "salesCount",
+        COALESCE(SUM(total), 0) as "salesVolume"
+      FROM "Sale"
+      WHERE "createdAt" >= ${today}
+        AND "isReversed" = false
+      GROUP BY "userId"
+    `;
+
+    // Get pending reversal requests per user (risk indicator)
+    const pendingReversals = await prisma.$queryRaw`
+      SELECT
+        "userId",
+        COUNT(*)::int as "reversalCount"
+      FROM "Sale"
+      WHERE "reversalStatus" = 'PENDING'
+      GROUP BY "userId"
+    `;
+
+    // Create lookup maps for efficient joining
+    const salesStatsMap = new Map(
+      serializeBigInt(todaySalesStats).map((s) => [s.userId, s])
+    );
+    const reversalsMap = new Map(
+      serializeBigInt(pendingReversals).map((r) => [r.userId, r.reversalCount])
+    );
+
+    // Enrich users with operational intelligence
+    const enrichedUsers = users.map((user) => {
+      const stats = salesStatsMap.get(user.id) || { salesCount: 0, salesVolume: 0 };
+      const activeReversalRequests = reversalsMap.get(user.id) || 0;
+
+      return {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        phone: user.phone,
+        role: user.role,
+        isActive: user.isActive,
+        lastLoginAt: user.lastLoginAt?.toISOString() || null,
+        createdAt: user.createdAt.toISOString(),
+        branch: user.branch
+          ? { id: user.branch.id, name: user.branch.name }
+          : null,
+        // Operational Intelligence
+        todaySalesCount: Number(stats.salesCount) || 0,
+        todaySalesVolume: Number(stats.salesVolume) || 0,
+        activeReversalRequests: Number(activeReversalRequests) || 0,
+      };
+    });
+
+    res.json({
+      success: true,
+      data: enrichedUsers,
+    });
+  } catch (error) {
+    console.error('Get users error:', error);
+    next(error);
+  }
+};
+
+/**
+ * Toggle User Active Status (Suspend/Activate)
+ * Used by the Access Control slide-to-suspend feature
+ */
+exports.toggleUserStatus = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { isActive } = req.body;
+
+    // Prevent self-deactivation
+    if (req.user.id === id && !isActive) {
+      return res.status(400).json({
+        success: false,
+        error: 'Cannot suspend your own account',
+      });
+    }
+
+    const user = await prisma.user.update({
+      where: { id },
+      data: { isActive },
+      select: {
+        id: true,
+        name: true,
+        isActive: true,
+      },
+    });
+
+    // Log the action
+    await prisma.auditLog.create({
+      data: {
+        userId: req.user.id,
+        action: isActive ? 'USER_ACTIVATED' : 'USER_SUSPENDED',
+        entityType: 'User',
+        entityId: id,
+        newValue: { isActive },
+      },
+    });
+
+    res.json({
+      success: true,
+      data: user,
+      message: `User ${user.name} has been ${isActive ? 'activated' : 'suspended'}`,
+    });
+  } catch (error) {
+    console.error('Toggle user status error:', error);
+    next(error);
+  }
+};
+
+/**
+ * Create New User (Draft Recruit)
+ * Multi-step onboarding for new staff
+ */
+exports.createUser = async (req, res, next) => {
+  try {
+    const { name, email, phone, password, role, branchId } = req.body;
+
+    // Check for existing email
+    const existingUser = await prisma.user.findUnique({
+      where: { email },
+    });
+
+    if (existingUser) {
+      return res.status(400).json({
+        success: false,
+        error: 'A user with this email already exists',
+      });
+    }
+
+    // Hash password
+    const bcrypt = require('bcryptjs');
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    const user = await prisma.user.create({
+      data: {
+        name,
+        email,
+        phone,
+        password: hashedPassword,
+        role,
+        branchId: role === 'MANAGER' ? branchId : null,
+      },
+      include: {
+        branch: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+      },
+    });
+
+    // Log the action
+    await prisma.auditLog.create({
+      data: {
+        userId: req.user.id,
+        action: 'USER_CREATED',
+        entityType: 'User',
+        entityId: user.id,
+        newValue: { name, email, role, branchId },
+      },
+    });
+
+    res.status(201).json({
+      success: true,
+      data: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        phone: user.phone,
+        role: user.role,
+        isActive: user.isActive,
+        branch: user.branch,
+        createdAt: user.createdAt.toISOString(),
+      },
+      message: `User ${user.name} has been created successfully`,
+    });
+  } catch (error) {
+    console.error('Create user error:', error);
+    next(error);
+  }
+};
+
+/**
+ * Reset User Password
+ * Generates a temporary password for the user
+ */
+exports.resetUserPassword = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+
+    // Generate a random temporary password
+    const crypto = require('crypto');
+    const tempPassword = crypto.randomBytes(4).toString('hex'); // 8 character hex string
+
+    const bcrypt = require('bcryptjs');
+    const hashedPassword = await bcrypt.hash(tempPassword, 10);
+
+    const user = await prisma.user.update({
+      where: { id },
+      data: { password: hashedPassword },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+      },
+    });
+
+    // Log the action
+    await prisma.auditLog.create({
+      data: {
+        userId: req.user.id,
+        action: 'USER_PASSWORD_RESET',
+        entityType: 'User',
+        entityId: id,
+      },
+    });
+
+    res.json({
+      success: true,
+      data: {
+        userId: user.id,
+        userName: user.name,
+        tempPassword, // Return for admin to share with user
+      },
+      message: `Password reset for ${user.name}. Temporary password: ${tempPassword}`,
+    });
+  } catch (error) {
+    console.error('Reset user password error:', error);
+    next(error);
+  }
+};
+
+/**
+ * Update User Password (Admin sets new password)
+ * Allows admin to set a specific new password for a user
+ * Requires admin's current password for verification
+ */
+exports.updateUserPassword = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { currentPassword, newPassword } = req.body;
+    const bcrypt = require('bcryptjs');
+
+    // Verify admin's current password
+    if (!currentPassword) {
+      return res.status(400).json({
+        success: false,
+        error: 'Please enter your current password for verification',
+      });
+    }
+
+    // Get the admin user (the one making the request)
+    const adminUser = await prisma.user.findUnique({
+      where: { id: req.user.id },
+      select: { password: true },
+    });
+
+    if (!adminUser) {
+      return res.status(401).json({
+        success: false,
+        error: 'Authentication error',
+      });
+    }
+
+    // Verify the admin's current password
+    const isPasswordValid = await bcrypt.compare(currentPassword, adminUser.password);
+    if (!isPasswordValid) {
+      return res.status(401).json({
+        success: false,
+        error: 'Incorrect password. Please verify your credentials.',
+      });
+    }
+
+    if (!newPassword || newPassword.length < 6) {
+      return res.status(400).json({
+        success: false,
+        error: 'Password must be at least 6 characters',
+      });
+    }
+
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+    const user = await prisma.user.update({
+      where: { id },
+      data: { password: hashedPassword },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+      },
+    });
+
+    // Log the action
+    await prisma.auditLog.create({
+      data: {
+        userId: req.user.id,
+        action: 'USER_PASSWORD_UPDATED',
+        entityType: 'User',
+        entityId: id,
+      },
+    });
+
+    res.json({
+      success: true,
+      data: {
+        userId: user.id,
+        userName: user.name,
+      },
+      message: `Password updated for ${user.name}`,
+    });
+  } catch (error) {
+    console.error('Update user password error:', error);
+    next(error);
+  }
+};
+
+/**
+ * Get Single User Details
+ * Returns complete user profile for editing
+ */
+exports.getUserDetails = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+
+    const user = await prisma.user.findUnique({
+      where: { id },
+      include: {
+        branch: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+      },
+    });
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        error: 'User not found',
+      });
+    }
+
+    res.json({
+      success: true,
+      data: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        phone: user.phone,
+        role: user.role,
+        isActive: user.isActive,
+        branchId: user.branchId,
+        branch: user.branch,
+        createdAt: user.createdAt.toISOString(),
+        lastLoginAt: user.lastLoginAt?.toISOString() || null,
+      },
+    });
+  } catch (error) {
+    console.error('Get user details error:', error);
+    next(error);
+  }
+};
+
+/**
+ * Update User Profile
+ * Allows admin to update user details (name, email, phone, role, branch)
+ */
+exports.updateUser = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { name, email, phone, role, branchId } = req.body;
+
+    // Check if email is being changed and if it's already in use
+    if (email) {
+      const existingUser = await prisma.user.findFirst({
+        where: {
+          email,
+          NOT: { id },
+        },
+      });
+
+      if (existingUser) {
+        return res.status(400).json({
+          success: false,
+          error: 'Email is already in use by another user',
+        });
+      }
+    }
+
+    // Get old user data for audit log
+    const oldUser = await prisma.user.findUnique({
+      where: { id },
+      select: { name: true, email: true, phone: true, role: true, branchId: true },
+    });
+
+    const user = await prisma.user.update({
+      where: { id },
+      data: {
+        ...(name && { name }),
+        ...(email && { email }),
+        ...(phone !== undefined && { phone }),
+        ...(role && { role }),
+        ...(role === 'MANAGER' && branchId ? { branchId } : {}),
+        ...(role && role !== 'MANAGER' ? { branchId: null } : {}),
+      },
+      include: {
+        branch: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+      },
+    });
+
+    // Log the action
+    await prisma.auditLog.create({
+      data: {
+        userId: req.user.id,
+        action: 'USER_UPDATED',
+        entityType: 'User',
+        entityId: id,
+        oldValue: oldUser,
+        newValue: { name: user.name, email: user.email, phone: user.phone, role: user.role, branchId: user.branchId },
+      },
+    });
+
+    res.json({
+      success: true,
+      data: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        phone: user.phone,
+        role: user.role,
+        isActive: user.isActive,
+        branch: user.branch,
+        createdAt: user.createdAt.toISOString(),
+      },
+      message: `User ${user.name} has been updated successfully`,
+    });
+  } catch (error) {
+    console.error('Update user error:', error);
     next(error);
   }
 };

@@ -28,7 +28,16 @@
       "Bash(grep:*)",
       "Bash(find:*)",
       "Bash(npm run:*)",
-      "Bash(tasklist:*)"
+      "Bash(tasklist:*)",
+      "Bash(cmd //c taskkill //PID 32324 //F)",
+      "Bash(del \"c:\\\\Users\\\\Julie\\\\pram-auto-spares\\\\server\\\\check-branches.js\")",
+      "Bash(cmd //c \"taskkill /PID 31220 /F\")",
+      "Bash(cmd //c \"taskkill /PID 4892 /F\")",
+      "Bash(cmd //c \"taskkill /PID 1304 /F\")",
+      "Bash(npx tsc:*)",
+      "Bash(test:*)",
+      "Bash(npx prisma migrate:*)",
+      "Bash(if not exist scripts mkdir scripts)"
     ],
     "deny": [],
     "ask": []

@@ -109,6 +109,8 @@ export const api = {
     create: (data: any) => axiosInstance.post('/sales', data),
     recordCreditPayment: (id: string, data: { amount: number; paymentMethod: string; notes?: string }) =>
       axiosInstance.post(`/sales/${id}/payment`, data),
+    searchCustomers: (query: string) =>
+      axiosInstance.get('/sales/customers/search', { params: { q: query } }),
   },
 
   // Dashboard
@@ -116,6 +118,23 @@ export const api = {
     stats: () => axiosInstance.get('/dashboard/stats'),
     branch: (branchId: string) =>
       axiosInstance.get(`/dashboard/branch/${branchId}`),
+  },
+
+  // Customers
+  customers: {
+    stats: (params?: Record<string, any>) =>
+      axiosInstance.get('/customers/stats', { params }),
+    list: (params?: Record<string, any>) =>
+      axiosInstance.get('/customers', { params }),
+    get: (id: string) => axiosInstance.get(`/customers/${id}`),
+    details: (id: string) => axiosInstance.get(`/customers/${id}`),
+    update: (id: string, data: { name: string; phone: string }) =>
+      axiosInstance.put(`/customers/${id}`, data),
+  },
+
+  // Branches
+  branches: {
+    list: () => axiosInstance.get('/branches'),
   },
 };
 

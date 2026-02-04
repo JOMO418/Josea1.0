@@ -15,6 +15,9 @@ interface ProductCardProps {
   stock: number;
   lowStockThreshold?: number;
   imageUrl?: string;
+  isSelected?: boolean;
+  dataIndex?: number;
+  onSelect?: () => void;
 }
 
 export default function ProductCard({
@@ -24,6 +27,9 @@ export default function ProductCard({
   price,
   stock,
   imageUrl,
+  isSelected = false,
+  dataIndex,
+  onSelect,
 }: ProductCardProps) {
   const addToCart = useStore((state) => state.addToCart);
 
@@ -55,9 +61,12 @@ export default function ProductCard({
         stock,
         oemNumber: partNumber,
       });
-      
+
       // Trigger Sound & Interactive Toast
       notify('info', `${name} added to cart`);
+
+      // Call onSelect if provided (for keyboard navigation)
+      onSelect?.();
     } else {
       notify('error', 'Item is currently out of stock');
     }
@@ -66,16 +75,39 @@ export default function ProductCard({
   return (
     <div
       onClick={handleAddToCart}
+      data-product-index={dataIndex}
       className={`
-        group relative bg-white border border-zinc-200/80
-        rounded-2xl overflow-hidden transition-all duration-300
-        ${stock > 0 
-          ? 'cursor-pointer hover:shadow-2xl hover:shadow-white/10 hover:-translate-y-1.5' 
+        group relative rounded-2xl overflow-hidden transition-all duration-200
+        ${isSelected
+          ? 'bg-gradient-to-br from-blue-50 to-white border-4 border-blue-500 ring-8 ring-blue-500/40 shadow-2xl shadow-blue-500/50 scale-110 z-20 -translate-y-2'
+          : 'bg-white border border-zinc-200/80'}
+        ${stock > 0
+          ? 'cursor-pointer hover:shadow-2xl hover:shadow-white/10 hover:-translate-y-1.5'
           : 'opacity-70 grayscale-[0.5] cursor-not-allowed'}
       `}
+      style={isSelected ? {
+        animation: 'glow 1.5s ease-in-out infinite alternate'
+      } : {}}
     >
+      {/* Keyboard Selection Indicator */}
+      {isSelected && (
+        <div className="absolute top-0 left-0 right-0 bg-gradient-to-r from-blue-500 to-blue-600 text-white text-center py-1.5 z-10">
+          <p className="text-[10px] font-bold uppercase tracking-wider">Press ENTER to Add</p>
+        </div>
+      )}
+
+      <style>{`
+        @keyframes glow {
+          from {
+            box-shadow: 0 0 15px rgba(59, 130, 246, 0.4), 0 0 30px rgba(59, 130, 246, 0.2);
+          }
+          to {
+            box-shadow: 0 0 25px rgba(59, 130, 246, 0.6), 0 0 45px rgba(59, 130, 246, 0.3);
+          }
+        }
+      `}</style>
       {/* Product Image Holder - Cleaner light background */}
-      <div className="relative bg-zinc-50 h-40 flex items-center justify-center border-b border-zinc-100">
+      <div className={`relative bg-zinc-50 h-40 flex items-center justify-center border-b border-zinc-100 ${isSelected ? 'mt-10' : ''}`}>
         {imageUrl ? (
           <img src={imageUrl} alt={name} className="w-full h-full object-cover" />
         ) : (

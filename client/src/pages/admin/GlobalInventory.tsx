@@ -14,6 +14,8 @@ import {
   Building2,
   Filter,
   Plus,
+  Truck,
+  DollarSign,
 } from 'lucide-react';
 import { formatKES } from '../../utils/formatter';
 import axios from '../../api/axios';
@@ -54,6 +56,14 @@ interface Product {
 interface Branch {
   id: string;
   name: string;
+  isActive: boolean;
+}
+
+interface Supplier {
+  id: string;
+  name: string;
+  location: string;
+  branchName: string;
   isActive: boolean;
 }
 
@@ -255,6 +265,7 @@ interface MasterControllerModalProps {
   onClose: () => void;
   product: Product | null;
   branches: Branch[];
+  suppliers: Supplier[];
   onSave: (productData: any, inventoryUpdates: InventoryUpdate[]) => void;
 }
 
@@ -263,6 +274,7 @@ const MasterControllerModal = ({
   onClose,
   product,
   branches,
+  suppliers,
   onSave,
 }: MasterControllerModalProps) => {
   const [activeTab, setActiveTab] = useState<'essentials' | 'branches'>('essentials');
@@ -279,6 +291,8 @@ const MasterControllerModal = ({
         costPrice: product.costPrice || 0,
         sellingPrice: product.sellingPrice || 0,
         lowStockThreshold: product.lowStockThreshold || 0,
+        supplierId: '',  // Will be populated if linked
+        buyingPrice: '' as number | string,  // Optional buying price
       };
     }
     return {
@@ -289,6 +303,8 @@ const MasterControllerModal = ({
       costPrice: 0,
       sellingPrice: 0,
       lowStockThreshold: 0,
+      supplierId: '',
+      buyingPrice: '' as number | string,
     };
   });
 
@@ -307,6 +323,8 @@ const MasterControllerModal = ({
         costPrice: product.costPrice || 0,
         sellingPrice: product.sellingPrice || 0,
         lowStockThreshold: product.lowStockThreshold || 0,
+        supplierId: '',  // Optional - can be set to link with procurement
+        buyingPrice: '',  // Optional buying price from supplier
       });
 
       // CRITICAL: Initialize branch updates with EXISTING inventory data
@@ -349,7 +367,7 @@ const MasterControllerModal = ({
 
   const handleBranchUpdate = (branchId: string, field: string, value: string | boolean) => {
     setBranchUpdates((prev) => {
-      const currentUpdate = prev[branchId] || { branchId };
+      const currentUpdate: InventoryUpdate = prev[branchId] || { branchId };
 
       // Handle boolean values (for isActive checkbox)
       if (typeof value === 'boolean') {
@@ -364,10 +382,10 @@ const MasterControllerModal = ({
 
       // If empty string, remove the field (use global default)
       if (value === '' || value === null || value === undefined) {
-        const { [field]: removed, ...rest } = currentUpdate;
+        const { [field as keyof InventoryUpdate]: _removed, ...rest } = currentUpdate;
         return {
           ...prev,
-          [branchId]: rest,
+          [branchId]: { branchId, ...rest } as InventoryUpdate,
         };
       }
 
@@ -584,6 +602,75 @@ const MasterControllerModal = ({
                   />
                 </div>
               </div>
+
+              {/* Procurement Link Section (Optional) */}
+              <div className="h-px bg-zinc-900 w-full" />
+
+              <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl p-5">
+                <div className="flex items-center gap-2 mb-4">
+                  <Truck className="w-4 h-4 text-blue-400" />
+                  <h4 className="text-sm font-bold text-zinc-300 uppercase tracking-wider">
+                    Procurement Link
+                  </h4>
+                  <span className="text-[10px] text-zinc-600 bg-zinc-800 px-2 py-0.5 rounded-full">
+                    Optional
+                  </span>
+                </div>
+                <p className="text-xs text-zinc-500 mb-4">
+                  Link this product to a supplier to automatically populate the Procurement Catalog.
+                </p>
+
+                <div className="grid grid-cols-2 gap-6">
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-blue-400 uppercase tracking-wider">
+                      Supplier
+                    </label>
+                    <div className="relative">
+                      <Truck className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
+                      <select
+                        value={formData.supplierId}
+                        onChange={(e) =>
+                          setFormData({ ...formData, supplierId: e.target.value })
+                        }
+                        className="w-full pl-10 pr-4 py-3 bg-zinc-900 border border-zinc-800 rounded-xl text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all appearance-none cursor-pointer"
+                      >
+                        <option value="">No Supplier Linked</option>
+                        {suppliers.filter(s => s.isActive).map((supplier) => (
+                          <option key={supplier.id} value={supplier.id}>
+                            {supplier.name} ({supplier.location})
+                          </option>
+                        ))}
+                      </select>
+                      <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500 pointer-events-none" />
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-amber-400 uppercase tracking-wider">
+                      Buying Price (KES)
+                    </label>
+                    <div className="relative">
+                      <DollarSign className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
+                      <input
+                        type="number"
+                        placeholder="Wholesale price from supplier"
+                        value={formData.buyingPrice}
+                        onChange={(e) =>
+                          setFormData({ ...formData, buyingPrice: e.target.value })
+                        }
+                        disabled={!formData.supplierId}
+                        className={`w-full pl-10 pr-4 py-3 bg-zinc-900 border rounded-xl font-mono placeholder-zinc-600 focus:ring-2 focus:ring-amber-500 focus:border-transparent transition-all ${
+                          !formData.supplierId
+                            ? 'border-zinc-800/50 text-zinc-600 cursor-not-allowed'
+                            : 'border-amber-900/50 text-amber-400'
+                        }`}
+                      />
+                    </div>
+                    {!formData.supplierId && (
+                      <p className="text-[10px] text-zinc-600">Select a supplier first</p>
+                    )}
+                  </div>
+                </div>
+              </div>
             </div>
           ) : (
             <div>
@@ -760,6 +847,7 @@ const MasterControllerModal = ({
 export default function GlobalInventory() {
   const [products, setProducts] = useState<Product[]>([]);
   const [branches, setBranches] = useState<Branch[]>([]);
+  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -803,9 +891,21 @@ export default function GlobalInventory() {
     }
   };
 
+  const fetchSuppliers = async () => {
+    try {
+      const response = await axios.get('/procurement/suppliers');
+      console.log('🚚 Suppliers fetched:', response.data);
+      setSuppliers(response.data.data || []);
+    } catch (err) {
+      console.error('❌ Failed to fetch suppliers:', err);
+      setSuppliers([]);
+    }
+  };
+
   useEffect(() => {
     fetchProducts();
     fetchBranches();
+    fetchSuppliers();
   }, []);
 
   useEffect(() => {
@@ -1196,6 +1296,7 @@ export default function GlobalInventory() {
             onClose={() => setIsModalOpen(false)}
             product={selectedProduct}
             branches={branches}
+            suppliers={suppliers}
             onSave={handleSaveProduct}
           />
         )}
@@ -1208,6 +1309,7 @@ export default function GlobalInventory() {
             isOpen={isWizardOpen}
             onClose={() => setIsWizardOpen(false)}
             branches={branches}
+            suppliers={suppliers}
             onSuccess={() => {
               fetchProducts(); // Refresh product list
               setIsWizardOpen(false);

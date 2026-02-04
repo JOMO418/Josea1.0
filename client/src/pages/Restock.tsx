@@ -1,9 +1,9 @@
 // ============================================
-// RESTOCK HUB V2 - MARKETPLACE STYLE
-// Robust API Handling + History Tracking
+// RESTOCK HUB V2 - DATABASE-DRIVEN
+// Real-time API Integration with Pending Order Tracking
 // ============================================
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   ClipboardCheck,
@@ -16,6 +16,10 @@ import {
   Minus,
   Calendar,
   AlertCircle,
+  Clock,
+  Loader2,
+  RefreshCw,
+  CheckCircle2,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useStore } from '../store/useStore';
@@ -49,15 +53,33 @@ interface ManifestItem {
   isSpecialRequest?: boolean;
 }
 
-interface HistoryOrder {
+interface Branch {
   id: string;
-  items: ManifestItem[];
-  timestamp: string;
-  branch: string;
+  name: string;
+  isActive: boolean;
+  isHeadOffice?: boolean;
 }
 
-// LocalStorage Key
-const HISTORY_KEY = 'pram-restock-history';
+interface PendingTransferItem {
+  productId: string;
+  quantityRequested: number;
+}
+
+interface PendingTransfer {
+  id: string;
+  transferNumber: string;
+  status: string;
+  items: PendingTransferItem[];
+  requestedAt: string;
+}
+
+interface OrderedProductInfo {
+  quantity: number;
+  transferId: string;
+  transferNumber: string;
+  requestedAt: string;
+  status: string; // 'REQUESTED' | 'APPROVED' | 'RECEIVED' etc.
+}
 
 // ===== UTILITY FUNCTIONS =====
 
@@ -76,6 +98,7 @@ const playSuccessSound = () => {
 
 export default function Restock() {
   const branchName = useStore((state) => state.branchName);
+  const branchId = useStore((state) => state.branchId);
 
   // Tab State
   const [activeTab, setActiveTab] = useState<'action' | 'history'>('action');
@@ -84,6 +107,14 @@ export default function Restock() {
   const [lowStockItems, setLowStockItems] = useState<InventoryItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+
+  // Branches Data
+  const [branches, setBranches] = useState<Branch[]>([]);
+  const [headOfficeId, setHeadOfficeId] = useState<string | null>(null);
+
+  // Pending Transfers (for "ORDERED" badges)
+  const [pendingTransfers, setPendingTransfers] = useState<PendingTransfer[]>([]);
+  const [orderedProductsMap, setOrderedProductsMap] = useState<Map<string, OrderedProductInfo>>(new Map());
 
   // Manifest State (Cart)
   const [manifest, setManifest] = useState<ManifestItem[]>([]);
@@ -95,15 +126,43 @@ export default function Restock() {
   const [newPartCar, setNewPartCar] = useState('');
   const [newPartQuantity, setNewPartQuantity] = useState(1);
 
-  // Order History (Persisted)
-  const [orderHistory, setOrderHistory] = useState<HistoryOrder[]>([]);
+  // Submitting State
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // ===== FETCH INVENTORY (ROBUST) =====
+  // ===== FETCH ALL DATA ON MOUNT =====
   useEffect(() => {
+    fetchBranches();
     fetchInventory();
-    loadHistory();
+    fetchPendingTransfers();
   }, []);
 
+  // ===== FETCH BRANCHES =====
+  const fetchBranches = async () => {
+    try {
+      const res = await axiosInstance.get('/admin/branches');
+      const branchList: Branch[] = res.data.data || res.data || [];
+      setBranches(branchList);
+
+      // Find head office / main branch
+      const hq = branchList.find(
+        (b) => b.isHeadOffice || b.name.toLowerCase().includes('head') || b.name.toLowerCase().includes('main') || b.name.toLowerCase().includes('hq')
+      );
+
+      if (hq) {
+        setHeadOfficeId(hq.id);
+      } else if (branchList.length > 0) {
+        // Fallback to first active branch if no HQ found
+        const firstActive = branchList.find((b) => b.isActive);
+        if (firstActive) {
+          setHeadOfficeId(firstActive.id);
+        }
+      }
+    } catch (err) {
+      console.error('Failed to fetch branches:', err);
+    }
+  };
+
+  // ===== FETCH INVENTORY =====
   const fetchInventory = async () => {
     setLoading(true);
     setError('');
@@ -133,27 +192,68 @@ export default function Restock() {
     }
   };
 
-  // ===== LOAD HISTORY FROM LOCALSTORAGE =====
-  const loadHistory = () => {
+  // ===== FETCH PENDING TRANSFERS =====
+  const fetchPendingTransfers = async () => {
     try {
-      const stored = localStorage.getItem(HISTORY_KEY);
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        setOrderHistory(parsed);
-      }
-    } catch (err) {
-      console.error('Failed to load history:', err);
-    }
-  };
+      // Fetch transfers with REQUESTED or RECEIVED status from this branch
+      // RECEIVED = auto-completed via closed-loop fulfillment (stock has arrived)
+      const [pendingRes, receivedRes] = await Promise.all([
+        axiosInstance.get('/transfers', { params: { status: 'REQUESTED' } }),
+        axiosInstance.get('/transfers', { params: { status: 'RECEIVED' } }),
+      ]);
 
-  // ===== SAVE HISTORY TO LOCALSTORAGE =====
-  const saveHistory = (newOrder: HistoryOrder) => {
-    try {
-      const updated = [newOrder, ...orderHistory];
-      localStorage.setItem(HISTORY_KEY, JSON.stringify(updated));
-      setOrderHistory(updated);
+      const pendingTransfersList: PendingTransfer[] = pendingRes.data.data || pendingRes.data || [];
+      const receivedTransfersList: PendingTransfer[] = receivedRes.data.data || receivedRes.data || [];
+
+      // Only show pending (not yet fulfilled) in the Pending Orders tab
+      setPendingTransfers(pendingTransfersList);
+
+      // Build a map of productId -> ordered info (includes both pending AND received)
+      // Priority: RECEIVED status takes precedence (shows "RESTOCKED" instead of "ORDERED")
+      const orderedMap = new Map<string, OrderedProductInfo>();
+
+      // First, add REQUESTED transfers
+      pendingTransfersList.forEach((transfer) => {
+        transfer.items?.forEach((item) => {
+          const existing = orderedMap.get(item.productId);
+          if (existing) {
+            // Sum up quantities if ordered in multiple transfers
+            existing.quantity += item.quantityRequested;
+          } else {
+            orderedMap.set(item.productId, {
+              quantity: item.quantityRequested,
+              transferId: transfer.id,
+              transferNumber: transfer.transferNumber,
+              requestedAt: transfer.requestedAt,
+              status: transfer.status,
+            });
+          }
+        });
+      });
+
+      // Then, overlay RECEIVED transfers (takes precedence - shows RESTOCKED)
+      receivedTransfersList.forEach((transfer) => {
+        transfer.items?.forEach((item) => {
+          const existing = orderedMap.get(item.productId);
+          if (existing) {
+            // Update to RECEIVED status and add quantity
+            existing.status = 'RECEIVED';
+            existing.quantity += item.quantityRequested;
+          } else {
+            orderedMap.set(item.productId, {
+              quantity: item.quantityRequested,
+              transferId: transfer.id,
+              transferNumber: transfer.transferNumber,
+              requestedAt: transfer.requestedAt,
+              status: 'RECEIVED',
+            });
+          }
+        });
+      });
+
+      setOrderedProductsMap(orderedMap);
     } catch (err) {
-      console.error('Failed to save history:', err);
+      console.error('Failed to fetch pending transfers:', err);
     }
   };
 
@@ -232,7 +332,7 @@ export default function Restock() {
       if (item.partNumber) text += `   Part #: ${item.partNumber}\n`;
       if (item.fitment) text += `   Fitment: ${item.fitment}\n`;
       text += `   Quantity: *${item.orderQuantity}* units\n`;
-      if (item.isSpecialRequest) text += `   ⚠️ Special Request\n`;
+      if (item.isSpecialRequest) text += `   Special Request\n`;
       text += `\n`;
     });
 
@@ -246,30 +346,92 @@ export default function Restock() {
     });
   };
 
-  const handleSubmitAndSave = () => {
+  const handleSubmitAndSave = async () => {
     if (manifest.length === 0) return;
 
-    const newOrder: HistoryOrder = {
-      id: `order-${Date.now()}`,
-      items: [...manifest],
-      timestamp: new Date().toISOString(),
-      branch: branchName,
-    };
+    if (!headOfficeId) {
+      toast.error('Unable to find Head Office. Please contact admin.');
+      return;
+    }
 
-    // Save to history
-    saveHistory(newOrder);
+    setIsSubmitting(true);
 
-    // Play success sound
-    playSuccessSound();
+    try {
+      // Build the payload for the transfer request
+      // CRITICAL: Controller expects 'quantity' not 'quantityRequested'
+      const items = manifest
+        .filter((item) => !item.isSpecialRequest) // Only include items with valid product IDs
+        .map((item) => ({
+          productId: item.id,
+          quantity: item.orderQuantity,
+        }));
 
-    // Show success toast
-    toast.success('Items have been ordered successfully to be restocked soon...', {
-      duration: 4000,
-    });
+      // Build notes for special requests
+      const specialRequests = manifest.filter((item) => item.isSpecialRequest);
+      let notes = '';
+      if (specialRequests.length > 0) {
+        notes = 'SPECIAL REQUESTS:\n' + specialRequests.map(
+          (item) => `- ${item.name} (${item.fitment}) x${item.orderQuantity}`
+        ).join('\n');
+      }
 
-    // Clear manifest
-    setManifest([]);
-    setIsDrawerOpen(false);
+      // Make API call to create transfer request
+      await axiosInstance.post('/transfers/request', {
+        items,
+        toBranchId: headOfficeId,
+        fromBranchId: branchId,
+        notes: notes || undefined,
+      });
+
+      // Play success sound
+      playSuccessSound();
+
+      // Show success toast
+      toast.success('Restock request submitted!', {
+        description: 'Your order has been sent to Head Office for processing.',
+        duration: 4000,
+      });
+
+      // Immediately update local ordered products map for instant visual feedback
+      const now = new Date().toISOString();
+      const tempTransferNumber = `TRF-PENDING-${Date.now()}`;
+      setOrderedProductsMap((prevMap) => {
+        const newMap = new Map(prevMap);
+        manifest
+          .filter((item) => !item.isSpecialRequest)
+          .forEach((item) => {
+            const existing = newMap.get(item.id);
+            if (existing) {
+              existing.quantity += item.orderQuantity;
+              // Keep existing status (RECEIVED stays RECEIVED, REQUESTED stays REQUESTED)
+            } else {
+              newMap.set(item.id, {
+                quantity: item.orderQuantity,
+                transferId: tempTransferNumber,
+                transferNumber: tempTransferNumber,
+                requestedAt: now,
+                status: 'REQUESTED', // New orders start as REQUESTED
+              });
+            }
+          });
+        return newMap;
+      });
+
+      // Clear manifest
+      setManifest([]);
+      setIsDrawerOpen(false);
+
+      // Refresh pending transfers to sync with actual server data
+      await fetchPendingTransfers();
+
+    } catch (err: any) {
+      // Log full error for debugging (developer only)
+      console.error('Submit error:', err);
+      // Show sanitized user-friendly message
+      toast.error('Submission failed. Please check your connection.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   // ===== UTILITY FUNCTIONS =====
@@ -291,6 +453,15 @@ export default function Restock() {
     if (current <= threshold) return 'CRITICAL';
     if (current <= threshold * 1.5) return 'LOW';
     return 'ADEQUATE';
+  };
+
+  // Format relative time for pending orders
+  const getRelativeTime = (dateString: string): string => {
+    const seconds = Math.floor((Date.now() - new Date(dateString).getTime()) / 1000);
+    if (seconds < 60) return 'Just now';
+    if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
+    if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`;
+    return `${Math.floor(seconds / 86400)}d ago`;
   };
 
   // ===== RENDER =====
@@ -326,7 +497,7 @@ export default function Restock() {
             }`}
           >
             <TrendingDown className="w-6 h-6" />
-            📉 Action Needed
+            Action Needed
             {lowStockItems.length > 0 && (
               <span className="px-3 py-1 bg-white/20 rounded-full text-sm font-bold">
                 {lowStockItems.length}
@@ -343,10 +514,10 @@ export default function Restock() {
             }`}
           >
             <ClipboardCheck className="w-6 h-6" />
-            📋 History
-            {orderHistory.length > 0 && (
+            Pending Orders
+            {pendingTransfers.length > 0 && (
               <span className="px-3 py-1 bg-white/20 rounded-full text-sm font-bold">
-                {orderHistory.length}
+                {pendingTransfers.length}
               </span>
             )}
           </button>
@@ -388,6 +559,9 @@ export default function Restock() {
                 const progressColor = getProgressColor(item.quantity, item.product.lowStockThreshold);
                 const statusLabel = getStatusLabel(item.quantity, item.product.lowStockThreshold);
 
+                // Check if already ordered
+                const orderedInfo = orderedProductsMap.get(item.productId);
+
                 const fitment = item.product.vehicleMake
                   ? `${item.product.vehicleMake} ${item.product.vehicleModel || ''}`.trim()
                   : 'Universal';
@@ -412,9 +586,39 @@ export default function Restock() {
                       {/* CENTER: Health Bar */}
                       <div className="flex-1">
                         <div className="flex items-center justify-between mb-3">
-                          <span className="text-lg font-bold text-white">
-                            {item.quantity} / {item.product.lowStockThreshold} Units
-                          </span>
+                          <div className="flex items-center gap-3">
+                            <span className="text-lg font-bold text-white">
+                              {item.quantity} / {item.product.lowStockThreshold} Units
+                            </span>
+
+                            {/* ORDERED / RESTOCKED Badge */}
+                            {orderedInfo && (
+                              orderedInfo.status === 'RECEIVED' ? (
+                                // RESTOCKED Badge (Green) - Stock has arrived via closed-loop fulfillment
+                                <div className="flex items-center gap-2 px-3 py-1.5 bg-green-500/20 border border-green-500/30 rounded-lg">
+                                  <CheckCircle2 className="w-4 h-4 text-green-400" />
+                                  <span className="text-sm font-bold text-green-400">
+                                    RESTOCKED: {orderedInfo.quantity}
+                                  </span>
+                                  <span className="text-xs text-green-500/70">
+                                    ({getRelativeTime(orderedInfo.requestedAt)})
+                                  </span>
+                                </div>
+                              ) : (
+                                // ORDERED Badge (Amber) - Still pending
+                                <div className="flex items-center gap-2 px-3 py-1.5 bg-amber-500/20 border border-amber-500/30 rounded-lg">
+                                  <Clock className="w-4 h-4 text-amber-400" />
+                                  <span className="text-sm font-bold text-amber-400">
+                                    ORDERED: {orderedInfo.quantity}
+                                  </span>
+                                  <span className="text-xs text-amber-500/70">
+                                    ({getRelativeTime(orderedInfo.requestedAt)})
+                                  </span>
+                                </div>
+                              )
+                            )}
+                          </div>
+
                           <span
                             className={`text-sm font-black px-4 py-2 rounded-lg ${
                               statusLabel === 'OUT OF STOCK'
@@ -447,7 +651,26 @@ export default function Restock() {
                             <ShoppingCart className="w-6 h-6" />
                             Added
                           </button>
+                        ) : orderedInfo?.status === 'RECEIVED' ? (
+                          // Already restocked - can still order more if needed
+                          <button
+                            onClick={() => addToManifest(item)}
+                            className="px-8 py-4 bg-green-600 hover:bg-green-700 text-white rounded-xl font-bold transition-all shadow-lg hover:shadow-2xl hover:scale-105 flex items-center gap-3 text-lg"
+                          >
+                            <Plus className="w-6 h-6" />
+                            Order More
+                          </button>
+                        ) : orderedInfo ? (
+                          // Pending order - can update
+                          <button
+                            onClick={() => addToManifest(item)}
+                            className="px-8 py-4 bg-amber-600 hover:bg-amber-700 text-white rounded-xl font-bold transition-all shadow-lg hover:shadow-2xl hover:scale-105 flex items-center gap-3 text-lg"
+                          >
+                            <RefreshCw className="w-6 h-6" />
+                            Update Order
+                          </button>
                         ) : (
+                          // No existing order
                           <button
                             onClick={() => addToManifest(item)}
                             className="px-8 py-4 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold transition-all shadow-lg hover:shadow-2xl hover:scale-105 flex items-center gap-3 text-lg"
@@ -464,57 +687,74 @@ export default function Restock() {
             )}
           </div>
         ) : (
-          // TAB B: HISTORY
+          // TAB B: PENDING ORDERS (Real-time from Database)
           <div className="space-y-5">
-            {orderHistory.length === 0 ? (
+            {/* Refresh Button */}
+            <div className="flex justify-end mb-4">
+              <button
+                onClick={fetchPendingTransfers}
+                className="flex items-center gap-2 px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-lg font-medium text-sm transition-colors"
+              >
+                <RefreshCw className="w-4 h-4" />
+                Refresh
+              </button>
+            </div>
+
+            {pendingTransfers.length === 0 ? (
               <div className="text-center py-20 bg-zinc-900 rounded-2xl border border-zinc-800">
                 <Calendar className="w-20 h-20 text-slate-600 mx-auto mb-6" />
-                <h3 className="text-2xl font-bold text-white mb-3">No Order History</h3>
-                <p className="text-slate-400">Your submitted orders will appear here.</p>
+                <h3 className="text-2xl font-bold text-white mb-3">No Pending Orders</h3>
+                <p className="text-slate-400">Your submitted orders will appear here while awaiting approval.</p>
               </div>
             ) : (
-              orderHistory.map((order) => (
+              pendingTransfers.map((transfer) => (
                 <div
-                  key={order.id}
+                  key={transfer.id}
                   className="bg-zinc-900 border border-zinc-800 rounded-2xl p-8"
                 >
                   <div className="flex items-center justify-between mb-6">
                     <div>
                       <h3 className="text-xl font-bold text-white mb-1">
-                        Order #{order.id.slice(-8).toUpperCase()}
+                        {transfer.transferNumber}
                       </h3>
-                      <p className="text-sm text-slate-400">
-                        {new Date(order.timestamp).toLocaleString()} • {order.branch}
+                      <p className="text-sm text-slate-400 flex items-center gap-2">
+                        <Clock className="w-4 h-4" />
+                        {new Date(transfer.requestedAt).toLocaleString()}
                       </p>
                     </div>
-                    <div className="px-4 py-2 rounded-lg bg-blue-500/20 border border-blue-500/30">
-                      <span className="text-blue-400 font-bold text-sm">
-                        {order.items.length} Items
-                      </span>
+                    <div className="flex items-center gap-3">
+                      <div className="px-4 py-2 rounded-lg bg-amber-500/20 border border-amber-500/30">
+                        <span className="text-amber-400 font-bold text-sm uppercase">
+                          {transfer.status}
+                        </span>
+                      </div>
+                      <div className="px-4 py-2 rounded-lg bg-blue-500/20 border border-blue-500/30">
+                        <span className="text-blue-400 font-bold text-sm">
+                          {transfer.items?.length || 0} Items
+                        </span>
+                      </div>
                     </div>
                   </div>
                   <div className="space-y-3">
-                    {order.items.map((item, idx) => (
-                      <div
-                        key={idx}
-                        className="flex items-center justify-between py-3 px-4 bg-zinc-800/50 rounded-lg border border-zinc-700"
-                      >
-                        <div className="flex-1">
-                          <span className="text-white font-semibold text-base">{item.name}</span>
-                          {item.fitment && (
-                            <span className="text-slate-400 text-sm ml-3">({item.fitment})</span>
-                          )}
-                          {item.isSpecialRequest && (
-                            <span className="ml-3 text-xs bg-yellow-500/20 text-yellow-400 px-2 py-1 rounded font-bold">
-                              SPECIAL
-                            </span>
-                          )}
+                    {transfer.items?.map((item, idx) => {
+                      // Find product name from low stock items if available
+                      const productInfo = lowStockItems.find((lsi) => lsi.productId === item.productId);
+                      const productName = productInfo?.product.name || `Product ${item.productId.slice(-6)}`;
+
+                      return (
+                        <div
+                          key={idx}
+                          className="flex items-center justify-between py-3 px-4 bg-zinc-800/50 rounded-lg border border-zinc-700"
+                        >
+                          <div className="flex-1">
+                            <span className="text-white font-semibold text-base">{productName}</span>
+                          </div>
+                          <span className="text-white font-bold text-lg">
+                            {item.quantityRequested} units
+                          </span>
                         </div>
-                        <span className="text-white font-bold text-lg">
-                          {item.orderQuantity} units
-                        </span>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
               ))
@@ -533,7 +773,7 @@ export default function Restock() {
           className="fixed bottom-10 right-10 px-8 py-5 bg-blue-600 hover:bg-blue-700 text-white rounded-full shadow-2xl font-black text-xl flex items-center gap-4 z-40 hover:scale-110 transition-transform"
         >
           <ShoppingCart className="w-7 h-7" />
-          🛒 Review Order ({manifest.length})
+          Review Order ({manifest.length})
         </motion.button>
       )}
 
@@ -646,10 +886,20 @@ export default function Restock() {
                   </button>
                   <button
                     onClick={handleSubmitAndSave}
-                    className="w-full flex items-center justify-center gap-3 px-4 py-4 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold transition-all text-base shadow-lg"
+                    disabled={isSubmitting}
+                    className="w-full flex items-center justify-center gap-3 px-4 py-4 bg-blue-600 hover:bg-blue-700 disabled:bg-zinc-700 disabled:text-slate-500 text-white rounded-xl font-bold transition-all text-base shadow-lg disabled:cursor-not-allowed"
                   >
-                    <ClipboardCheck className="w-5 h-5" />
-                    Submit & Save
+                    {isSubmitting ? (
+                      <>
+                        <Loader2 className="w-5 h-5 animate-spin" />
+                        Submitting...
+                      </>
+                    ) : (
+                      <>
+                        <ClipboardCheck className="w-5 h-5" />
+                        Submit Order
+                      </>
+                    )}
                   </button>
                 </div>
               </div>

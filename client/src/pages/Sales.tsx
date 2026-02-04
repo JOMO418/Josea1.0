@@ -21,6 +21,13 @@ interface SalePayment {
   amount: number;
 }
 
+interface CreditPayment {
+  id: string;
+  amount: number;
+  paymentMethod: 'CASH' | 'MPESA';
+  createdAt: string;
+}
+
 interface SaleItem {
   id: string;
   productId: string;
@@ -46,10 +53,16 @@ interface Sale {
   reversalStatus: 'NONE' | 'PENDING' | 'APPROVED';
   createdAt: string;
   payments: SalePayment[];
+  creditPayments?: CreditPayment[];
   items?: SaleItem[];
   user: {
     name: string;
   };
+  // M-Pesa Verification Fields
+  flaggedForVerification?: boolean;
+  mpesaVerificationStatus?: 'NOT_APPLICABLE' | 'PENDING' | 'VERIFIED' | 'FAILED';
+  mpesaReceiptNumber?: string | null;
+  flaggedAt?: string | null;
 }
 
 export default function Sales() {
@@ -67,6 +80,11 @@ export default function Sales() {
   const [amountToReverse, setAmountToReverse] = useState('');
   const [submittingReversal, setSubmittingReversal] = useState(false);
   const [showItemsModal, setShowItemsModal] = useState(false);
+
+  // M-Pesa Verification Modal States
+  const [showVerificationModal, setShowVerificationModal] = useState(false);
+  const [mpesaCode, setMpesaCode] = useState('');
+  const [verifying, setVerifying] = useState(false);
 
   // KPI Calculations (Today Only) - Clean Sum with Rounding
   const calculateKPIs = () => {
@@ -139,6 +157,39 @@ export default function Sales() {
     );
   });
 
+  const handleVerifyMpesa = async () => {
+    if (!selectedSale || !mpesaCode.trim()) {
+      toast.error('Please enter M-Pesa code');
+      return;
+    }
+
+    if (mpesaCode.trim().length < 10) {
+      toast.error('M-Pesa code must be at least 10 characters');
+      return;
+    }
+
+    setVerifying(true);
+    try {
+      const response = await axiosInstance.post(`/sales/${selectedSale.id}/verify-mpesa`, {
+        mpesaCode: mpesaCode.trim().toUpperCase(),
+      });
+
+      toast.success('✅ M-Pesa payment verified successfully!');
+      setShowVerificationModal(false);
+      setMpesaCode('');
+      setSelectedSale(null);
+
+      // Refresh sales list
+      fetchSales();
+    } catch (err: any) {
+      console.error('Verification error:', err);
+      const errorMsg = err.response?.data?.message || 'Failed to verify M-Pesa code';
+      toast.error(errorMsg);
+    } finally {
+      setVerifying(false);
+    }
+  };
+
   const handleRequestReversal = async () => {
     if (!selectedSale || !reversalReason.trim()) {
       toast.error('Please provide a reversal reason');
@@ -186,6 +237,24 @@ export default function Sales() {
   };
 
   const getStatusBadge = (sale: Sale) => {
+    // 🚨 HIGHEST PRIORITY: M-Pesa Verification Pending (Flagged Sales)
+    if (sale.flaggedForVerification && sale.mpesaVerificationStatus === 'PENDING') {
+      return (
+        <div className="flex flex-col gap-1">
+          <div className="flex items-center gap-2">
+            <span className="relative flex h-4 w-4">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-600 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-4 w-4 bg-red-600"></span>
+            </span>
+            <span className="px-3 py-1 rounded-full text-xs font-black bg-red-600 text-white uppercase tracking-wider animate-pulse">
+              🚨 VERIFY M-PESA
+            </span>
+          </div>
+          <span className="text-[10px] text-red-600 font-bold">Click to verify</span>
+        </div>
+      );
+    }
+
     if (sale.reversalStatus === 'PENDING') {
       return (
         <span className="px-3 py-1 rounded-full text-xs font-bold bg-yellow-500 text-black">
@@ -203,10 +272,30 @@ export default function Sales() {
     }
 
     if (sale.isCredit && sale.creditStatus === 'PARTIAL') {
+      const totalCreditPaid = sale.creditPayments?.reduce((sum, p) => sum + Number(p.amount), 0) || 0;
       return (
-        <span className="px-3 py-1 rounded-full text-xs font-bold bg-orange-500 text-white">
-          PARTIAL
-        </span>
+        <div className="flex flex-col gap-1">
+          <span className="px-3 py-1 rounded-full text-xs font-bold bg-orange-500 text-white inline-block w-fit">
+            PARTIAL
+          </span>
+          <span className="text-[10px] text-zinc-500">
+            Paid: KES {new Intl.NumberFormat('en-KE').format(totalCreditPaid)}
+          </span>
+        </div>
+      );
+    }
+
+    // Sale was on credit but is now fully paid - show history
+    if (sale.isCredit && sale.creditStatus === 'PAID') {
+      return (
+        <div className="flex flex-col gap-1">
+          <span className="px-3 py-1 rounded-full text-xs font-bold bg-emerald-500 text-white inline-block w-fit">
+            CLEARED
+          </span>
+          <span className="text-[10px] text-orange-500 font-medium">
+            Was DENI
+          </span>
+        </div>
       );
     }
 
@@ -338,6 +427,9 @@ export default function Sales() {
                     Receipt
                   </th>
                   <th className="px-6 py-4 text-left text-xs font-black text-white uppercase tracking-wider">
+                    Date & Time
+                  </th>
+                  <th className="px-6 py-4 text-left text-xs font-black text-white uppercase tracking-wider">
                     Customer
                   </th>
                   <th className="px-6 py-4 text-left text-xs font-black text-white uppercase tracking-wider">
@@ -356,12 +448,57 @@ export default function Sales() {
               </thead>
               <tbody className="divide-y divide-zinc-200">
                 {filteredSales.map((sale) => (
-                  <tr key={sale.id} className="hover:bg-zinc-50 transition-colors">
+                  <tr
+                    key={sale.id}
+                    className={`transition-all ${
+                      sale.flaggedForVerification && sale.mpesaVerificationStatus === 'PENDING'
+                        ? 'animate-pulse bg-red-50 border-l-4 border-l-red-600 hover:bg-red-100 cursor-pointer relative'
+                        : 'hover:bg-zinc-50'
+                    }`}
+                    onClick={() => {
+                      if (sale.flaggedForVerification && sale.mpesaVerificationStatus === 'PENDING') {
+                        setSelectedSale(sale);
+                        setShowVerificationModal(true);
+                      }
+                    }}
+                    style={
+                      sale.flaggedForVerification && sale.mpesaVerificationStatus === 'PENDING'
+                        ? {
+                            boxShadow: '0 0 20px rgba(220, 38, 38, 0.3)',
+                            animation: 'pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+                          }
+                        : undefined
+                    }
+                  >
                     {/* Receipt Column - Monospaced */}
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <span className="font-mono font-bold text-sm text-zinc-900">
-                        #{sale.receiptNumber}
-                      </span>
+                      <div className="flex items-center gap-2">
+                        {sale.flaggedForVerification && sale.mpesaVerificationStatus === 'PENDING' && (
+                          <span className="relative flex h-4 w-4">
+                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-600 opacity-75"></span>
+                            <span className="relative inline-flex rounded-full h-4 w-4 bg-red-600"></span>
+                          </span>
+                        )}
+                        <span className={`font-mono font-bold text-sm ${
+                          sale.flaggedForVerification && sale.mpesaVerificationStatus === 'PENDING'
+                            ? 'text-red-700 font-black'
+                            : 'text-zinc-900'
+                        }`}>
+                          #{sale.receiptNumber}
+                        </span>
+                      </div>
+                    </td>
+
+                    {/* Date & Time Column */}
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div>
+                        <p className="text-sm font-semibold text-zinc-900">
+                          {format(new Date(sale.createdAt), 'dd MMM yyyy')}
+                        </p>
+                        <p className="text-xs text-zinc-500">
+                          {format(new Date(sale.createdAt), 'hh:mm a')}
+                        </p>
+                      </div>
                     </td>
 
                     {/* Customer Column */}
@@ -751,6 +888,158 @@ export default function Sales() {
               >
                 Close
               </button>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* M-PESA VERIFICATION MODAL - SECURITY CRITICAL */}
+      <AnimatePresence>
+        {showVerificationModal && selectedSale && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden border-4 border-red-600"
+              style={{ boxShadow: '0 0 40px rgba(220, 38, 38, 0.5)' }}
+            >
+              {/* Dramatic Header */}
+              <div className="bg-gradient-to-r from-red-600 to-red-700 p-6 relative">
+                <div className="absolute top-0 left-0 w-full h-full bg-red-900 opacity-50 animate-pulse"></div>
+                <div className="relative flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="relative">
+                      <span className="flex h-12 w-12">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-40"></span>
+                        <span className="relative inline-flex items-center justify-center rounded-full h-12 w-12 bg-white">
+                          <AlertCircle className="w-6 h-6 text-red-600" />
+                        </span>
+                      </span>
+                    </div>
+                    <div>
+                      <h3 className="text-xl font-black text-white uppercase tracking-tight">
+                        🚨 Verify M-Pesa
+                      </h3>
+                      <p className="text-red-100 text-xs font-bold">Security Check Required</p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => {
+                      setShowVerificationModal(false);
+                      setMpesaCode('');
+                      setSelectedSale(null);
+                    }}
+                    className="text-white hover:bg-white/20 p-2 rounded-lg transition-colors"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+              </div>
+
+              {/* Content */}
+              <div className="p-6">
+                {/* Sale Info - Warning Style */}
+                <div className="bg-red-50 border-2 border-red-200 rounded-xl p-4 mb-6">
+                  <div className="flex items-start gap-3">
+                    <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
+                    <div className="flex-1">
+                      <p className="text-xs font-bold text-red-900 uppercase tracking-wider mb-2">
+                        Flagged Sale - Awaiting Payment
+                      </p>
+                      <div className="space-y-1 text-sm">
+                        <div className="flex justify-between">
+                          <span className="text-red-700 font-semibold">Receipt:</span>
+                          <span className="font-mono font-black text-red-900">
+                            #{selectedSale.receiptNumber}
+                          </span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-red-700 font-semibold">Amount:</span>
+                          <span className="font-black text-red-900">
+                            KES{' '}
+                            {selectedSale.payments
+                              .filter((p) => p.method === 'MPESA')
+                              .reduce((sum, p) => sum + p.amount, 0)
+                              .toLocaleString()}
+                          </span>
+                        </div>
+                        {selectedSale.flaggedAt && (
+                          <div className="flex justify-between">
+                            <span className="text-red-700 font-semibold">Flagged:</span>
+                            <span className="text-red-900 text-xs">
+                              {Math.floor(
+                                (Date.now() - new Date(selectedSale.flaggedAt).getTime()) /
+                                  1000 /
+                                  60
+                              )}{' '}
+                              min ago
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* M-Pesa Code Input */}
+                <div className="mb-6">
+                  <label className="block text-sm font-bold text-zinc-900 mb-2 uppercase tracking-wider">
+                    Enter M-Pesa Receipt Code
+                  </label>
+                  <input
+                    type="text"
+                    value={mpesaCode}
+                    onChange={(e) => setMpesaCode(e.target.value.toUpperCase())}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && mpesaCode.trim().length >= 10 && !verifying) {
+                        handleVerifyMpesa();
+                      }
+                    }}
+                    placeholder="e.g., QH12ABC789"
+                    className="w-full px-4 py-3 border-2 border-zinc-300 rounded-xl text-center font-mono text-lg font-bold uppercase focus:outline-none focus:ring-4 focus:ring-red-500/50 focus:border-red-500 transition-all"
+                    autoFocus
+                    maxLength={15}
+                  />
+                  <p className="text-xs text-zinc-500 mt-2 text-center">
+                    Ask customer for their M-Pesa confirmation code
+                  </p>
+                </div>
+
+                {/* Action Buttons */}
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    onClick={() => {
+                      setShowVerificationModal(false);
+                      setMpesaCode('');
+                      setSelectedSale(null);
+                    }}
+                    disabled={verifying}
+                    className="px-6 py-3 bg-zinc-200 text-zinc-700 font-bold rounded-xl hover:bg-zinc-300 transition-colors disabled:opacity-50"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleVerifyMpesa}
+                    disabled={verifying || mpesaCode.trim().length < 10}
+                    className="px-6 py-3 bg-red-600 text-white font-black rounded-xl hover:bg-red-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed uppercase tracking-wider shadow-lg"
+                  >
+                    {verifying ? (
+                      <div className="flex items-center justify-center gap-2">
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        Verifying...
+                      </div>
+                    ) : (
+                      '✓ Verify & Unflag'
+                    )}
+                  </button>
+                </div>
+              </div>
             </motion.div>
           </motion.div>
         )}

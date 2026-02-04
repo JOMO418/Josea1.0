@@ -13,6 +13,7 @@ import Dashboard from './pages/Dashboard';
 import POS from './pages/POS';
 import Sales from './pages/Sales';
 import Inventory from './pages/Inventory';
+import Customers from './pages/Customers';
 import Restock from './pages/Restock';
 import DebtTracking from './pages/DebtTracking';
 import Login from './pages/Login';
@@ -20,6 +21,13 @@ import CommandCenter from './pages/admin/CommandCenter';
 import GlobalInventory from './pages/admin/GlobalInventory';
 import StockAllocation from './pages/admin/StockAllocation';
 import SalesAudit from './pages/admin/SalesAudit';
+import BranchOrders from './pages/admin/BranchOrders';
+import AdminCustomers from './pages/admin/Customers';
+import Procurement from './pages/admin/Procurement';
+import AccessControl from './pages/admin/AccessControl';
+import UserRoles from './pages/admin/UserRoles';
+import ComingSoon from './pages/admin/ComingSoon';
+import SystemConfig from './pages/admin/SystemConfig';
 
 // ===== PROTECTED ROUTE WRAPPER =====
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -69,6 +77,7 @@ function App() {
           <Route path="pos" element={<POS />} />
           <Route path="sales" element={<Sales />} />
           <Route path="inventory" element={<Inventory />} />
+          <Route path="customers" element={<Customers />} />
           <Route path="restock" element={<Restock />} />
           <Route path="debts" element={<DebtTracking />} />
 
@@ -87,9 +96,17 @@ function App() {
             <Route path="command-center" element={<CommandCenter />} />
             <Route path="inventory" element={<GlobalInventory />} />
             <Route path="allocation" element={<StockAllocation />} />
+            <Route path="orders" element={<BranchOrders />} />
             <Route path="audit" element={<SalesAudit />} />
-            <Route path="debts" element={<div className="text-white">Debt Manager (Coming Soon)</div>} />
-            <Route path="staff" element={<div className="text-white">Staff & Access (Coming Soon)</div>} />
+            <Route path="customers" element={<AdminCustomers />} />
+            <Route path="procurement" element={<Procurement />} />
+            <Route path="staff" element={<AccessControl />} />
+            <Route path="roles" element={<UserRoles />} />
+            <Route path="settings" element={<SystemConfig />} />
+            <Route path="coming-soon" element={<ComingSoon />} />
+
+            {/* Catch-all for undefined admin routes - redirect to coming soon */}
+            <Route path="*" element={<ComingSoon />} />
           </Route>
         </Route>
       </Routes>

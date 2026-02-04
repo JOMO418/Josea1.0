@@ -20,10 +20,11 @@ model Branch {
 
   users          User[]
   inventory      Inventory[]
-  sales          Sale[]
-  transfersFrom  Transfer[]      @relation("TransferFrom")
-  transfersTo    Transfer[]      @relation("TransferTo")
-  stockMovements StockMovement[]
+  sales              Sale[]
+  transfersFrom      Transfer[]         @relation("TransferFrom")
+  transfersTo        Transfer[]         @relation("TransferTo")
+  stockMovements     StockMovement[]
+  mpesaTransactions  MpesaTransaction[]
 
   @@index([isActive])
 }
@@ -48,7 +49,10 @@ model User {
   transfersApproved   Transfer[]      @relation("TransferApprovedBy")
   transfersDispatched Transfer[]      @relation("TransferDispatchedBy")
   transfersReceived   Transfer[]      @relation("TransferReceivedBy")
-  stockMovements      StockMovement[]
+  stockMovements        StockMovement[]
+  procurementsAssigned  ProcurementOrder[]   @relation("ProcurementAssignedTo")
+  procurementsCreated   ProcurementOrder[]   @relation("ProcurementCreatedBy")
+  mpesaTransactions     MpesaTransaction[]
 
   @@index([email])
   @@index([role, isActive])
@@ -78,10 +82,12 @@ model Product {
   createdAt         DateTime        @default(now())
   updatedAt         DateTime        @updatedAt
 
-  inventory         Inventory[]
-  saleItems         SaleItem[]
-  transferItems     TransferItem[]
-  stockMovements    StockMovement[]
+  inventory            Inventory[]
+  saleItems            SaleItem[]
+  transferItems        TransferItem[]
+  stockMovements       StockMovement[]
+  supplierProducts     SupplierProduct[]
+  procurementItems     ProcurementOrderItem[]
 
   @@index([isActive])
   @@index([vehicleMake, vehicleModel, vehicleEngine])
@@ -111,29 +117,57 @@ model Inventory {
   @@index([isActive])
 }
 
+model Customer {
+  id           String   @id @default(cuid())
+  name         String
+  phone        String   @unique
+  totalSpent   Decimal  @default(0) @db.Decimal(10, 2)
+  totalDebt    Decimal  @default(0) @db.Decimal(10, 2)
+  lastVisitAt  DateTime @default(now())
+  createdAt    DateTime @default(now())
+
+  sales        Sale[]
+
+  @@index([phone])
+  @@index([lastVisitAt])
+}
+
 model Sale {
-  id             String          @id @default(cuid())
-  receiptNumber  String          @unique
-  branchId       String
-  userId         String
-  customerName   String?
-  customerPhone  String?
-  subtotal       Decimal         @db.Decimal(10, 2)
-  discount       Decimal         @db.Decimal(10, 2) @default(0)
-  total          Decimal         @db.Decimal(10, 2)
-  isCredit       Boolean         @default(false)
-  creditStatus   CreditStatus?
-  isWalkIn       Boolean         @default(true)
-  reversalStatus ReversalStatus  @default(NONE)
-  isReversed     Boolean         @default(false)
-  reversalReason String?
-  reversedAt     DateTime?
-  reversedBy     String?
-  notes          String?
-  createdAt      DateTime        @default(now())
+  id                      String                  @id @default(cuid())
+  receiptNumber           String                  @unique
+  branchId                String
+  userId                  String
+  customerId              String?
+  customerName            String?
+  customerPhone           String?
+  subtotal                Decimal                 @db.Decimal(10, 2)
+  discount                Decimal                 @db.Decimal(10, 2) @default(0)
+  total                   Decimal                 @db.Decimal(10, 2)
+  isCredit                Boolean                 @default(false)
+  creditStatus            CreditStatus?
+  isWalkIn                Boolean                 @default(true)
+  reversalStatus          ReversalStatus          @default(NONE)
+  isReversed              Boolean                 @default(false)
+  reversalReason          String?
+  reversedAt              DateTime?
+  reversedBy              String?
+  notes                   String?
+
+  // M-Pesa Verification Fields
+  mpesaVerificationStatus MpesaVerificationStatus @default(NOT_APPLICABLE)
+  flaggedForVerification  Boolean                 @default(false)
+  flaggedAt               DateTime?               // When sale was flagged (Complete Later pressed)
+  mpesaReceiptNumber      String?                 // Primary M-Pesa receipt (also in payments.reference)
+  verificationNotes       String?                 // Admin/Manager notes about verification
+  verifiedAt              DateTime?               // When verification was completed
+  verifiedBy              String?                 // User ID who verified
+  verificationMethod      VerificationMethod      @default(NOT_VERIFIED) // How it was verified
+
+  createdAt               DateTime                @default(now())
 
   branch         Branch          @relation(fields: [branchId], references: [id])
   user           User            @relation(fields: [userId], references: [id])
+  customer       Customer?       @relation(fields: [customerId], references: [id])
   items          SaleItem[]
   payments       SalePayment[]
   creditPayments CreditPayment[]
@@ -144,6 +178,11 @@ model Sale {
   @@index([createdAt])
   @@index([isReversed])
   @@index([reversalStatus])
+  @@index([customerId])
+  @@index([flaggedForVerification])
+  @@index([flaggedAt])
+  @@index([mpesaVerificationStatus])
+  @@index([verificationMethod])
 }
 
 enum PaymentMethod {
@@ -157,6 +196,20 @@ enum CreditStatus {
   PENDING
   PARTIAL
   PAID
+}
+
+enum MpesaVerificationStatus {
+  NOT_APPLICABLE    // No M-Pesa payment in this sale
+  PENDING           // M-Pesa payment made, awaiting verification
+  VERIFIED          // M-Pesa payment confirmed
+  FAILED            // M-Pesa payment failed or invalid
+}
+
+enum VerificationMethod {
+  NOT_VERIFIED      // Not yet verified
+  AUTOMATIC         // Auto-verified via M-Pesa callback
+  MANUAL_MANAGER    // Manager manually entered M-Pesa code
+  MANUAL_ADMIN      // Admin manually confirmed (override)
 }
 
 enum ReversalStatus {
@@ -203,10 +256,44 @@ model CreditPayment {
   receivedBy    String
   notes         String?
   createdAt     DateTime      @default(now())
-  
+
   sale          Sale          @relation(fields: [saleId], references: [id], onDelete: Cascade)
 
   @@index([saleId])
+  @@index([createdAt])
+}
+
+// ============================================
+// M-PESA TRANSACTION TRACKING
+// ============================================
+
+model MpesaTransaction {
+  id                  Int       @id @default(autoincrement())
+  merchantRequestId   String    @unique
+  checkoutRequestId   String    @unique
+  phoneNumber         String
+  amount              Decimal   @db.Decimal(10, 2)
+  accountReference    String
+  transactionDesc     String?
+  status              String    @default("PENDING") // PENDING, COMPLETED, FAILED
+  resultCode          String?
+  resultDesc          String?
+  mpesaReceiptNumber  String?
+  transactionDate     String?
+  branchId            String
+  initiatedBy         String
+  completedAt         DateTime?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  branch              Branch    @relation(fields: [branchId], references: [id])
+  initiatedByUser     User      @relation(fields: [initiatedBy], references: [id])
+
+  @@index([checkoutRequestId])
+  @@index([merchantRequestId])
+  @@index([status])
+  @@index([branchId])
+  @@index([phoneNumber])
   @@index([createdAt])
 }
 
@@ -308,4 +395,188 @@ model StockMovement {
   @@index([branchId])
   @@index([type])
   @@index([createdAt])
+}
+
+// ============================================
+// PROCUREMENT MANAGEMENT MODELS
+// ============================================
+
+enum SupplierLocation {
+  NAIROBI_CBD
+  DUBAI
+  UGANDA
+  OTHER
+}
+
+enum ProcurementOrderStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum OrderPriority {
+  NORMAL
+  URGENT
+}
+
+enum ProcurementPaymentStatus {
+  UNPAID
+  PARTIAL
+  PAID
+}
+
+enum Currency {
+  KES
+  USD
+  AED
+  UGX
+}
+
+model Supplier {
+  id            String           @id @default(cuid())
+  name          String
+  location      SupplierLocation @default(NAIROBI_CBD)
+  branchName    String           // Specific shop/branch name in that location
+  contactPerson String
+  phone         String
+  email         String?
+  specialties   String[]         // Array of product categories they specialize in
+  notes         String?
+  isActive      Boolean          @default(true)
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+
+  supplierProducts    SupplierProduct[]
+  procurementItems    ProcurementOrderItem[]
+  alternativeItems    ProcurementOrderItem[] @relation("AlternativeSupplier")
+  supplierPayments    SupplierPayment[]
+
+  @@index([location])
+  @@index([isActive])
+  @@index([name])
+}
+
+model SupplierProduct {
+  id             String   @id @default(cuid())
+  supplierId     String
+  productId      String
+  wholesalePrice Decimal  @db.Decimal(10, 2)
+  currency       Currency @default(KES)
+  isAvailable    Boolean  @default(true)
+  notes          String?
+  lastUpdated    DateTime @default(now())
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  supplier       Supplier @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+  product        Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([supplierId, productId])
+  @@index([supplierId])
+  @@index([productId])
+  @@index([isAvailable])
+}
+
+model ProcurementOrder {
+  id            String                    @id @default(cuid())
+  orderNumber   String                    @unique
+  status        ProcurementOrderStatus    @default(PENDING)
+  paymentStatus ProcurementPaymentStatus  @default(UNPAID)
+  priority      OrderPriority             @default(NORMAL)
+  assignedToId  String?
+  totalAmount   Decimal                   @db.Decimal(10, 2) @default(0)
+  routeOrder    Json?                     // Order of suppliers to visit
+  notes         String?
+  createdById   String
+  createdAt     DateTime                  @default(now())
+  updatedAt     DateTime                  @updatedAt
+
+  assignedTo    User?                     @relation("ProcurementAssignedTo", fields: [assignedToId], references: [id])
+  createdBy     User                      @relation("ProcurementCreatedBy", fields: [createdById], references: [id])
+  items         ProcurementOrderItem[]
+  supplierPayments SupplierPayment[]
+
+  @@index([status])
+  @@index([paymentStatus])
+  @@index([priority])
+  @@index([assignedToId])
+  @@index([createdAt])
+}
+
+model ProcurementOrderItem {
+  id                    String    @id @default(cuid())
+  procurementOrderId    String
+  productId             String
+  supplierId            String
+  quantity              Int
+  unitPrice             Decimal   @db.Decimal(10, 2)  // Same as expectedPrice for backward compat
+  expectedPrice         Decimal   @db.Decimal(10, 2)  // Price when list created
+  actualPrice           Decimal?  @db.Decimal(10, 2)  // Price worker actually paid
+  subtotal              Decimal   @db.Decimal(10, 2)
+  isReceived            Boolean   @default(false)
+  isPurchased           Boolean   @default(false)
+  purchasedAt           DateTime?
+  workerNotes           String?                        // Worker feedback, stockouts, alternatives
+  alternativeSupplierId String?                        // If bought from different supplier
+  notes                 String?
+
+  procurementOrder      ProcurementOrder @relation(fields: [procurementOrderId], references: [id], onDelete: Cascade)
+  product               Product          @relation(fields: [productId], references: [id])
+  supplier              Supplier         @relation(fields: [supplierId], references: [id])
+  alternativeSupplier   Supplier?        @relation("AlternativeSupplier", fields: [alternativeSupplierId], references: [id])
+
+  @@index([procurementOrderId])
+  @@index([productId])
+  @@index([supplierId])
+  @@index([isReceived])
+  @@index([isPurchased])
+}
+
+// Per-supplier payment tracking for shopping sessions
+model SupplierPayment {
+  id                  String                   @id @default(cuid())
+  procurementOrderId  String
+  supplierId          String
+  expectedAmount      Decimal                  @db.Decimal(10, 2)  // Sum of expected prices for this supplier
+  actualAmount        Decimal?                 @db.Decimal(10, 2)  // Sum of actual prices paid
+  paymentStatus       ProcurementPaymentStatus @default(UNPAID)
+  paymentMethod       PaymentMethod?                               // CASH, MPESA, etc.
+  paidAt              DateTime?
+  receiptImageUrl     String?
+  notes               String?
+  createdAt           DateTime                 @default(now())
+  updatedAt           DateTime                 @updatedAt
+
+  procurementOrder    ProcurementOrder         @relation(fields: [procurementOrderId], references: [id], onDelete: Cascade)
+  supplier            Supplier                 @relation(fields: [supplierId], references: [id])
+
+  @@unique([procurementOrderId, supplierId])
+  @@index([procurementOrderId])
+  @@index([supplierId])
+  @@index([paymentStatus])
+}
+
+// ============================================
+// SYSTEM CONFIGURATION MODEL
+// Neural Core - Central Settings Management
+// ============================================
+
+model SystemSettings {
+  id          String   @id @default(cuid())
+  category    String   // POS, TAX, INVENTORY, SECURITY, BUSINESS, NOTIFICATIONS
+  key         String   // Unique setting identifier within category
+  value       Json     // Flexible JSON value storage
+  label       String   // Human-readable label
+  description String?  // Setting description
+  dataType    String   @default("string") // string, number, boolean, json, array
+  isEncrypted Boolean  @default(false) // For sensitive data
+  isLocked    Boolean  @default(false) // Prevent modification by non-owners
+  lastUpdatedBy String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([category, key])
+  @@index([category])
+  @@index([key])
 }

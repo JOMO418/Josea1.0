@@ -78,9 +78,16 @@ export default function MainLayout() {
                 PRAM AUTO
               </span>
               <span className="text-slate-600">/</span>
-              <span className="text-white font-bold uppercase tracking-wide">
-                {currentPage}
-              </span>
+              {location.pathname === '/pos' ? (
+                <span className="font-bold uppercase tracking-wide">
+                  <span className="text-purple-400 italic">Josea</span>
+                  <span className="text-white"> POS</span>
+                </span>
+              ) : (
+                <span className="text-white font-bold uppercase tracking-wide">
+                  {currentPage}
+                </span>
+              )}
             </div>
           </div>
 
