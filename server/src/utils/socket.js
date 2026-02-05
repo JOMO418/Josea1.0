@@ -16,7 +16,7 @@ function initializeSocket(server) {
   }
 
   // Parse allowed origins from env safely
-  const raw = process.env.ALLOWED_ORIGINS || 'http://localhost:3000';
+  const raw = process.env.ALLOWED_ORIGINS || 'https://josea1-0.vercel.app,http://localhost:3001,http://localhost:5173';
   const origins = raw
     .split(',')
     .map(s => s.trim())
@@ -25,8 +25,20 @@ function initializeSocket(server) {
   try {
     io = new Server(server, {
       cors: {
-        origin: origins,
+        origin: function (origin, callback) {
+          // Allow requests with no origin
+          if (!origin) return callback(null, true);
+
+          // Check if origin is in allowed list
+          if (origins.indexOf(origin) !== -1) {
+            callback(null, true);
+          } else {
+            console.warn(`[socket] CORS blocked origin: ${origin}`);
+            callback(new Error('Not allowed by CORS'));
+          }
+        },
         credentials: true,
+        methods: ['GET', 'POST'],
       },
     });
   } catch (err) {
