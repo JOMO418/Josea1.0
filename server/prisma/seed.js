@@ -19,6 +19,20 @@ async function main() {
   await prisma.transferItem.deleteMany({});
   await prisma.transfer.deleteMany({});
   await prisma.auditLog.deleteMany({});
+  // Delete procurement tables before products
+  await prisma.supplierPayment.deleteMany({});
+  await prisma.procurementOrderItem.deleteMany({});
+  await prisma.procurementOrder.deleteMany({});
+  await prisma.supplierProduct.deleteMany({});
+  await prisma.supplier.deleteMany({});
+  // Delete AI tables
+  await prisma.aIConversationMessage.deleteMany({});
+  await prisma.aIConversation.deleteMany({});
+  await prisma.aIQueryLog.deleteMany({});
+  await prisma.aIUsageTracking.deleteMany({});
+  // Delete M-Pesa
+  await prisma.mpesaTransaction.deleteMany({});
+  // Now safe to delete these
   await prisma.inventory.deleteMany({});
   await prisma.product.deleteMany({});
   await prisma.user.deleteMany({});

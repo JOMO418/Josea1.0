@@ -158,7 +158,7 @@ export function isRetryableError(resultCode: number): boolean {
     MPESA_RESULT_CODES.INVALID_AMOUNT,
   ];
 
-  return retryableErrors.includes(resultCode);
+  return retryableErrors.includes(resultCode as any);
 }
 
 /**

@@ -808,13 +808,13 @@ export default function UserRoles() {
           const Icon = config.icon;
           const roleKey = key.toLowerCase() as 'owner' | 'admin' | 'manager';
           const fullAccess = PERMISSION_CATEGORIES.flatMap((c) => c.permissions).filter(
-            (p) => p[roleKey] === 'full'
+            (p: any) => p[roleKey] === 'full'
           ).length;
           const partialAccess = PERMISSION_CATEGORIES.flatMap((c) => c.permissions).filter(
-            (p) => p[roleKey] === 'partial'
+            (p: any) => p[roleKey] === 'partial'
           ).length;
           const noAccess = PERMISSION_CATEGORIES.flatMap((c) => c.permissions).filter(
-            (p) => p[roleKey] === 'none'
+            (p: any) => p[roleKey] === 'none'
           ).length;
 
           return (

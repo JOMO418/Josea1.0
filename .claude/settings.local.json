@@ -38,7 +38,11 @@
       "Bash(test:*)",
       "Bash(npx prisma migrate:*)",
       "Bash(if not exist scripts mkdir scripts)",
-      "Bash(npm outdated:*)"
+      "Bash(npm outdated:*)",
+      "Bash(where:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)"
     ],
     "deny": [],
     "ask": []

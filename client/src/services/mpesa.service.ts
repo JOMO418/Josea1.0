@@ -134,21 +134,6 @@ class MpesaService {
       // Safaricom: 7XX (where XX = 00-29, 40-43, 45-46, 48, 57, 59, 68-69, 90-99)
       // Airtel: 7XX (where XX = 30-39, 50-56, 80-89) and 1XX (10-19)
       // Telkom: 7XX (where XX = 70-79)
-      const validPrefixes = [
-        '70', // Safaricom
-        '71', // Safaricom
-        '72', // Safaricom
-        '74', // Safaricom
-        '75', // Safaricom & Airtel
-        '75', // Airtel
-        '76', // Safaricom
-        '79', // Safaricom
-        '73', // Airtel
-        '78', // Airtel
-        '77', // Telkom
-        '11', // Airtel
-      ];
-
       // More precise validation
       const isSafaricom =
         (networkPrefix === '7' &&
@@ -165,26 +150,9 @@ class MpesaService {
         fullPrefix.startsWith('114') ||
         fullPrefix.startsWith('115');
 
-      const isAirtel =
-        (networkPrefix === '7' &&
-          ['30', '31', '32', '33', '34', '35', '36', '37', '38', '39',
-           '50', '51', '52', '53', '54', '55', '56', '80', '81', '82',
-           '83', '84', '85', '86', '87', '88', '89'
-          ].some(p => fullPrefix.startsWith('7' + p))) ||
-        fullPrefix.startsWith('116') ||
-        fullPrefix.startsWith('117') ||
-        fullPrefix.startsWith('118') ||
-        fullPrefix.startsWith('119');
-
-      const isTelkom =
-        networkPrefix === '7' &&
-        ['70', '71', '72', '73', '74', '75', '76', '77', '78', '79'].some(p =>
-          fullPrefix.startsWith('7' + p.charAt(1))
-        ) &&
-        fullPrefix >= '770' &&
-        fullPrefix <= '779';
-
       // Simple validation: Check if starts with valid Kenyan mobile prefix
+      // Validate network (unused but kept for future use)
+      const _isValidNetwork = isSafaricom;
       if (networkPrefix !== '7' && networkPrefix !== '1') {
         return {
           valid: false,
