@@ -73,7 +73,7 @@ const ROLES = {
 
 // ===== PERMISSION CATEGORIES =====
 
-const PERMISSION_CATEGORIES = [
+const PERMISSION_CATEGORIES: any = [
   {
     name: 'Dashboard & Intelligence',
     icon: LayoutDashboard,
@@ -637,7 +637,7 @@ export default function UserRoles() {
 
               {/* Permissions for Selected Role */}
               <div className="space-y-6">
-                {PERMISSION_CATEGORIES.map((category) => {
+                {PERMISSION_CATEGORIES.map((category: any) => {
                   const CategoryIcon = category.icon;
                   return (
                     <div key={category.name}>
@@ -646,7 +646,7 @@ export default function UserRoles() {
                         {category.name}
                       </h3>
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                        {category.permissions.map((perm) => {
+                        {category.permissions.map((perm: any) => {
                           const PermIcon = perm.icon;
                           const roleKey = selectedRole.toLowerCase() as 'owner' | 'admin' | 'manager';
                           const status = perm[roleKey];
@@ -655,7 +655,7 @@ export default function UserRoles() {
                             partial: { bg: 'bg-amber-500/10', border: 'border-amber-500/20', text: 'text-amber-400' },
                             none: { bg: 'bg-slate-800/50', border: 'border-slate-700/30', text: 'text-slate-500' },
                           };
-                          const sc = statusConfig[status];
+                          const sc = statusConfig[status as keyof typeof statusConfig];
 
                           return (
                             <div
@@ -723,7 +723,7 @@ export default function UserRoles() {
                   </tr>
                 </thead>
                 <tbody>
-                  {PERMISSION_CATEGORIES.map((category) => (
+                  {PERMISSION_CATEGORIES.map((category: any) => (
                     <>
                       {/* Category Header */}
                       <tr key={`cat-${category.name}`} className="bg-slate-800/30">
@@ -735,7 +735,7 @@ export default function UserRoles() {
                         </td>
                       </tr>
                       {/* Permissions */}
-                      {category.permissions.map((perm, permIndex) => (
+                      {category.permissions.map((perm: any, permIndex: number) => (
                         <tr
                           key={perm.key}
                           className={`
@@ -796,15 +796,15 @@ export default function UserRoles() {
         {(Object.entries(ROLES) as Array<[keyof typeof ROLES, typeof ROLES[keyof typeof ROLES]]>).map(([key, config]) => {
           const Icon = config.icon;
           const roleKey = key.toLowerCase() as 'owner' | 'admin' | 'manager';
-          const allPermissions = PERMISSION_CATEGORIES.flatMap((c) => c.permissions) as any[];
+          const allPermissions = PERMISSION_CATEGORIES.flatMap((c: any) => c.permissions) as any[];
           const fullAccess = allPermissions.filter(
-            (p) => p[roleKey] === 'full'
+            (p: any) => p[roleKey] === 'full'
           ).length;
           const partialAccess = allPermissions.filter(
-            (p) => p[roleKey] === 'partial'
+            (p: any) => p[roleKey] === 'partial'
           ).length;
           const noAccess = allPermissions.filter(
-            (p) => p[roleKey] === 'none'
+            (p: any) => p[roleKey] === 'none'
           ).length;
 
           return (

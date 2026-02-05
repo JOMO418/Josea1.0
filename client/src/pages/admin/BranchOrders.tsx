@@ -104,15 +104,6 @@ const getBranchColors = (branchName: string) => {
 // DATE HELPERS
 // ============================================
 
-const formatTime12Hour = (dateString: string): string => {
-  const date = new Date(dateString);
-  return date.toLocaleTimeString('en-US', {
-    hour: 'numeric',
-    minute: '2-digit',
-    hour12: true,
-  });
-};
-
 const getDateLabel = (date: Date): string => {
   const today = new Date();
   const yesterday = new Date(today);

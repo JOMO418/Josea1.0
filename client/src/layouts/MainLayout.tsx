@@ -184,7 +184,7 @@ export default function MainLayout() {
         onClose={() => setIsAIChatOpen(false)}
         userRole={userRole || 'MANAGER'}
         userName={userName || 'User'}
-        branchId={branchId}
+        branchId={branchId || undefined}
         branchName={branchName || 'Branch'}
       />
     </div>

@@ -42,7 +42,7 @@ import {
   Area,
 } from 'recharts';
 import { formatKES, shortenNumber } from '../../utils/formatter';
-import { formatDistanceToNow, format } from 'date-fns';
+import { format } from 'date-fns';
 import axios from '../../api/axios';
 
 // ============================================

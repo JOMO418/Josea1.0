@@ -1434,9 +1434,6 @@ function CreateUserWizard({ isOpen, onClose, onSuccess, branches }: CreateUserWi
 
   if (!isOpen) return null;
 
-  const currentStepConfig = WIZARD_STEPS.find(s => s.id === step)!;
-  const StepIcon = currentStepConfig.icon;
-
   return (
     <AnimatePresence>
       <motion.div

@@ -21,7 +21,7 @@ export const ManualMpesaPaymentModal: React.FC<ManualMpesaPaymentModalProps> = (
   isOpen,
   onClose: _onClose,
   amount,
-  phone,
+  phone: _phone,
   accountReference,
   onPaymentSuccess,
   onPaymentFailed,

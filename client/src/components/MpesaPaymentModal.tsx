@@ -58,7 +58,7 @@ const HOLD_RESULT     = IS_SANDBOX ? 1200 : 0;  // success before callback
 // ---------------------------------------------------------------------------
 export const MpesaPaymentModal: React.FC<MpesaPaymentModalProps> = ({
   isOpen, onClose, amount, phone, accountReference,
-  onPaymentSuccess, onPaymentFailed, runPayment,
+  onPaymentSuccess, onPaymentFailed: _onPaymentFailed, runPayment,
 }) => {
   const [step, setStep]             = useState<'initiating'|'pending'|'completed'|'failed'>('initiating');
   const [countdown, setCountdown]   = useState(60);

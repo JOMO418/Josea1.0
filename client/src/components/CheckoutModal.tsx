@@ -240,8 +240,9 @@ export default function CheckoutModal({ isOpen, onClose, onSuccess }: CheckoutMo
   }, [isOpen]);
 
   // ---------------------------------------------------------------------------
-  // runPayment — this is the function MpesaPaymentModal calls AFTER its
+  // _runPayment — this is the function MpesaPaymentModal calls AFTER its
   // visual hold stages. It does the real initiate + poll via mpesaService.
+  // @ts-expect-error - Function reserved for future MpesaPaymentModal integration
   // ---------------------------------------------------------------------------
   const _runPayment = async (): Promise<{ success: boolean; receiptNumber?: string; reason?: string }> => {
     try {

@@ -31,7 +31,6 @@ import {
   AlertTriangle,
   XCircle,
   CreditCard,
-  ShoppingBag,
   Calendar,
   Receipt,
   Star,

@@ -47,7 +47,7 @@ export default function PaymentsTab() {
   const [selectedPayment, setSelectedPayment] = useState<SupplierPayment | null>(null);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('Cash');
   const [paymentNotes, setPaymentNotes] = useState('');
-  const [_saving, setSaving] = useState(false);
+  const [saving, _setSaving] = useState(false);
 
   // Load pending payments
   const loadPendingPayments = useCallback(async () => {

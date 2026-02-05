@@ -128,7 +128,6 @@ class MpesaService {
 
       // Extract the network prefix (first digit after 254)
       const networkPrefix = cleaned.substring(3, 4);
-      const fullPrefix = cleaned.substring(3, 6);
 
       // Validate Kenyan mobile network prefixes
       // Safaricom: 7XX (where XX = 00-29, 40-43, 45-46, 48, 57, 59, 68-69, 90-99)
