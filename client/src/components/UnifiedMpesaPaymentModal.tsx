@@ -35,7 +35,7 @@ interface UnifiedMpesaPaymentModalProps {
 
 export const UnifiedMpesaPaymentModal: React.FC<UnifiedMpesaPaymentModalProps> = ({
   isOpen,
-  onClose,
+  onClose: _onClose,
   amount,
   phone,
   accountReference,

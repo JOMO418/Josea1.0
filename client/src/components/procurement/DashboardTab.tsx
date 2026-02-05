@@ -3,7 +3,7 @@
 // Overview stats, search, and quick actions
 // ============================================
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Search,
   Users,
@@ -19,7 +19,6 @@ import {
   DollarSign,
 } from 'lucide-react';
 import { motion } from 'framer-motion';
-import { toast } from 'sonner';
 import { procurementApi } from '../../services/procurement.service';
 import type { ProcurementStats, RecentActivity, ProductSearchResult } from '../../types/procurement.types';
 

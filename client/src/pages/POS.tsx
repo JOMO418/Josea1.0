@@ -159,7 +159,6 @@ export default function POS() {
 
     const cols = getGridColumns();
     const maxIndex = filteredProducts.length - 1;
-    const currentRow = Math.floor(selectedProductIndex / cols);
     const currentCol = selectedProductIndex % cols;
     const totalRows = Math.ceil(filteredProducts.length / cols);
     const isRightmostColumn = currentCol === cols - 1;
@@ -279,7 +278,7 @@ export default function POS() {
   };
 
   // Handle mouse entering a product (clears keyboard selection)
-  const handleProductMouseEnter = (index: number) => {
+  const handleProductMouseEnter = (_index: number) => {
     // Clear keyboard selection when mouse is used
     setSelectedProductIndex(-1);
     setFocusMode('search');
@@ -320,7 +319,7 @@ export default function POS() {
 
   // Detect mouse movement for seamless keyboard-to-mouse switching
   useEffect(() => {
-    let mouseMoveTimeout: NodeJS.Timeout;
+    let mouseMoveTimeout: ReturnType<typeof setTimeout>;
 
     const handleMouseMove = () => {
       // Clear any existing timeout

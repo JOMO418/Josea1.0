@@ -45,7 +45,7 @@ export default function AIChatInterface({
   onClose,
   userRole,
   userName,
-  branchId,
+  branchId: _branchId,
   branchName,
   externalConversationId,
   onConversationChange,

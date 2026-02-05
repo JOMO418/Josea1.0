@@ -5,7 +5,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { Copy, CheckCircle2, Clock, XCircle } from 'lucide-react';
+import { Copy, CheckCircle2, Clock } from 'lucide-react';
 
 interface ManualMpesaPaymentModalProps {
   isOpen: boolean;
@@ -19,7 +19,7 @@ interface ManualMpesaPaymentModalProps {
 
 export const ManualMpesaPaymentModal: React.FC<ManualMpesaPaymentModalProps> = ({
   isOpen,
-  onClose,
+  onClose: _onClose,
   amount,
   phone,
   accountReference,
@@ -65,8 +65,6 @@ export const ManualMpesaPaymentModal: React.FC<ManualMpesaPaymentModalProps> = (
     const secs = seconds % 60;
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
-
-  const displayPhone = phone.startsWith('254') ? '0' + phone.slice(3) : phone;
 
   if (!isOpen) return null;
 

@@ -14,7 +14,6 @@ import {
   Trash2,
   X,
   User,
-  Mail,
   Building2,
   Globe,
   CheckCircle,

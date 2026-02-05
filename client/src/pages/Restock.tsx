@@ -109,7 +109,7 @@ export default function Restock() {
   const [error, setError] = useState('');
 
   // Branches Data
-  const [branches, setBranches] = useState<Branch[]>([]);
+  const [_branches, setBranches] = useState<Branch[]>([]);
   const [headOfficeId, setHeadOfficeId] = useState<string | null>(null);
 
   // Pending Transfers (for "ORDERED" badges)

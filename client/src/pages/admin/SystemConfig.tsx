@@ -21,11 +21,9 @@ import {
   Check,
   AlertTriangle,
   ChevronRight,
-  Zap,
   Activity,
   Database,
   Lock,
-  Unlock,
   RefreshCw,
   Printer,
   FileText,
@@ -36,18 +34,12 @@ import {
   Users,
   Mail,
   MessageSquare,
-  TrendingUp,
-  Calendar,
   Globe,
   Key,
-  UserCog,
-  ShieldCheck,
-  Layers,
   X,
 } from 'lucide-react';
 import axios from '../../api/axios';
 import { toast } from 'sonner';
-import { formatKES } from '../../utils/formatter';
 
 // ============================================
 // TYPE DEFINITIONS
@@ -669,7 +661,6 @@ export default function SystemConfig() {
           return setting && localChanges[key] !== setting.value;
         })
         .map(([key, value]) => {
-          const setting = Object.values(settings).flat().find(s => s.key === key);
           return {
             category: Object.keys(settings).find(cat =>
               settings[cat].some(s => s.key === key)
@@ -849,7 +840,7 @@ export default function SystemConfig() {
                     </button>
                   </div>
                 ) : (
-                  currentSettings.map((setting, index) => (
+                  currentSettings.map((setting) => (
                     <SettingInput
                       key={setting.key}
                       setting={setting}

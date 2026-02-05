@@ -76,7 +76,7 @@ export default function CheckoutModal({ isOpen, onClose, onSuccess }: CheckoutMo
     customerPhone: string;
     mpesaReceiptNumber: string | null;
     isFlagged: boolean;
-    items: Array<{name: string; quantity: number; price: number; total: number}>;
+    items: Array<{name: string; quantity: number; price: number; total: number; vehicleMake?: string; vehicleModel?: string}>;
     servedBy: string;
     branchName: string;
     branchPhone: string;
@@ -243,7 +243,7 @@ export default function CheckoutModal({ isOpen, onClose, onSuccess }: CheckoutMo
   // runPayment — this is the function MpesaPaymentModal calls AFTER its
   // visual hold stages. It does the real initiate + poll via mpesaService.
   // ---------------------------------------------------------------------------
-  const runPayment = async (): Promise<{ success: boolean; receiptNumber?: string; reason?: string }> => {
+  const _runPayment = async (): Promise<{ success: boolean; receiptNumber?: string; reason?: string }> => {
     try {
       // Use unified customer phone for M-Pesa
       const phoneValidation = mpesaService.validateKenyanPhone(customerPhone);

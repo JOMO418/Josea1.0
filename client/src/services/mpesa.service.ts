@@ -134,24 +134,7 @@ class MpesaService {
       // Safaricom: 7XX (where XX = 00-29, 40-43, 45-46, 48, 57, 59, 68-69, 90-99)
       // Airtel: 7XX (where XX = 30-39, 50-56, 80-89) and 1XX (10-19)
       // Telkom: 7XX (where XX = 70-79)
-      // More precise validation
-      const isSafaricom =
-        (networkPrefix === '7' &&
-          ['00', '01', '02', '03', '04', '05', '06', '07', '08', '09',
-           '10', '11', '12', '13', '14', '15', '16', '17', '18', '19',
-           '20', '21', '22', '23', '24', '25', '26', '27', '28', '29',
-           '40', '41', '42', '43', '45', '46', '48', '57', '59', '68',
-           '69', '90', '91', '92', '93', '94', '95', '96', '97', '98', '99'
-          ].some(p => fullPrefix.startsWith('7' + p))) ||
-        fullPrefix.startsWith('110') ||
-        fullPrefix.startsWith('111') ||
-        fullPrefix.startsWith('112') ||
-        fullPrefix.startsWith('113') ||
-        fullPrefix.startsWith('114') ||
-        fullPrefix.startsWith('115');
-
       // Simple validation: Check if starts with valid Kenyan mobile prefix
-      // Note: isSafaricom validation available for future use if needed
       if (networkPrefix !== '7' && networkPrefix !== '1') {
         return {
           valid: false,

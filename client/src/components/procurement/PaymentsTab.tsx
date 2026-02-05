@@ -6,27 +6,20 @@
 import { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  CreditCard,
   Building,
   Receipt,
   Check,
   X,
-  Upload,
   DollarSign,
-  AlertCircle,
   Loader2,
   ChevronDown,
   ChevronRight,
-  MapPin,
   FileText,
-  Clock,
 } from 'lucide-react';
 import { supplierPaymentService } from '../../services/procurement.service';
 import type {
   PendingPaymentsResponse,
-  PendingPaymentsGroup,
   SupplierPayment,
-  PaymentStatus,
   PaymentMethod,
   Location,
 } from '../../types/procurement.types';
@@ -54,7 +47,7 @@ export default function PaymentsTab() {
   const [selectedPayment, setSelectedPayment] = useState<SupplierPayment | null>(null);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('Cash');
   const [paymentNotes, setPaymentNotes] = useState('');
-  const [saving, setSaving] = useState(false);
+  const [_saving, setSaving] = useState(false);
 
   // Load pending payments
   const loadPendingPayments = useCallback(async () => {
@@ -88,7 +81,7 @@ export default function PaymentsTab() {
   // Mark payment as paid
   const handleMarkAsPaid = async (payment: SupplierPayment) => {
     setUpdatingPayment(payment.id);
-    const { data, error } = await supplierPaymentService.update(payment.id, {
+    const { data } = await supplierPaymentService.update(payment.id, {
       payment_status: 'Paid',
       payment_method: paymentMethod,
       notes: paymentNotes || undefined,

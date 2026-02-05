@@ -19,7 +19,6 @@ import {
   Phone,
   User,
   Building,
-  AlertCircle,
   Loader2,
   DollarSign,
   TrendingUp,
@@ -103,7 +102,7 @@ export default function SuppliersProductsTab() {
   // Load suppliers by location
   const loadSuppliers = useCallback(async () => {
     setLoading(true);
-    const { data, error } = await supplierService.getByLocation();
+    const { data } = await supplierService.getByLocation();
     if (data) {
       setLocationGroups(data);
       // Auto-select first supplier if none selected
@@ -120,7 +119,7 @@ export default function SuppliersProductsTab() {
   // Load supplier products
   const loadSupplierProducts = useCallback(async (supplierId: string) => {
     setLoadingProducts(true);
-    const { data, error } = await supplierService.getCatalog(supplierId, {
+    const { data } = await supplierService.getCatalog(supplierId, {
       search: searchQuery || undefined,
     });
     if (data) {
@@ -217,7 +216,7 @@ export default function SuppliersProductsTab() {
     if (!selectedSupplier || !selectedProduct || !productPrice) return;
 
     setSaving(true);
-    const { data, error } = await supplierService.addProduct(selectedSupplier.id, {
+    const { data } = await supplierService.addProduct(selectedSupplier.id, {
       product_id: selectedProduct.product.id,
       wholesale_price: parseFloat(productPrice),
       currency: productCurrency,

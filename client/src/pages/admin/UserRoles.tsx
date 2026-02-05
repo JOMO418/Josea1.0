@@ -26,8 +26,6 @@ import {
   Lock,
   Unlock,
   Eye,
-  Edit,
-  Trash2,
   Plus,
   GitBranch,
   TrendingUp,
@@ -74,15 +72,6 @@ const ROLES = {
 };
 
 // ===== PERMISSION CATEGORIES =====
-interface Permission {
-  key: string;
-  label: string;
-  icon: React.ElementType;
-  owner: 'full' | 'partial' | 'none';
-  admin: 'full' | 'partial' | 'none';
-  manager: 'full' | 'partial' | 'none';
-  description?: string;
-}
 
 const PERMISSION_CATEGORIES = [
   {
@@ -734,7 +723,7 @@ export default function UserRoles() {
                   </tr>
                 </thead>
                 <tbody>
-                  {PERMISSION_CATEGORIES.map((category, catIndex) => (
+                  {PERMISSION_CATEGORIES.map((category) => (
                     <>
                       {/* Category Header */}
                       <tr key={`cat-${category.name}`} className="bg-slate-800/30">

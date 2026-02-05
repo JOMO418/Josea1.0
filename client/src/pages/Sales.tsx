@@ -184,7 +184,7 @@ export default function Sales() {
 
     setVerifying(true);
     try {
-      const response = await axiosInstance.post(`/sales/${selectedSale.id}/verify-mpesa`, {
+      await axiosInstance.post(`/sales/${selectedSale.id}/verify-mpesa`, {
         mpesaCode: mpesaCode.trim().toUpperCase(),
       });
 

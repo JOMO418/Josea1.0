@@ -34,7 +34,7 @@ export default function ProductCard({
   imageUrl,
   isSelected = false,
   dataIndex,
-  onSelect,
+  onSelect: _onSelect,
   onMouseEnter,
 }: ProductCardProps) {
   const addToCart = useStore((state) => state.addToCart);

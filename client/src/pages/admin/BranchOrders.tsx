@@ -8,7 +8,6 @@ import {
   ChevronDown,
   ChevronRight,
   Package,
-  MapPin,
   Filter,
   Calendar,
   Loader2,

@@ -31,7 +31,7 @@ export default function SupermarketMpesaModal({
   phone,
   accountReference,
   onPaymentSuccess,
-  onPaymentFailed,
+  onPaymentFailed: _onPaymentFailed,
   onCompleteLater,
   tillNumber = import.meta.env.VITE_MPESA_TILL_NUMBER || '174379'
 }: SupermarketMpesaModalProps) {
@@ -45,8 +45,8 @@ export default function SupermarketMpesaModal({
 
   const manualInputRef = useRef<HTMLInputElement>(null);
   const checkoutRequestIdRef = useRef<string | null>(null);
-  const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
-  const timerIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const pollingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const timerIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Keyboard navigation: Arrow keys to switch methods
   useEffect(() => {
@@ -228,12 +228,12 @@ export default function SupermarketMpesaModal({
         timerIntervalRef.current = null;
       }
 
-      if (finalStatus.data?.status === 'completed' && finalStatus.data.mpesaReceiptNumber) {
+      if (finalStatus.data?.status === 'completed' && finalStatus.data?.mpesaReceiptNumber) {
         setReceiptNumber(finalStatus.data.mpesaReceiptNumber);
         setPaymentState('success');
 
         setTimeout(() => {
-          onPaymentSuccess(finalStatus.data.mpesaReceiptNumber!);
+          onPaymentSuccess(finalStatus.data?.mpesaReceiptNumber || '');
         }, 2000);
       } else {
         setPaymentState('failed');

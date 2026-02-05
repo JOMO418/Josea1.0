@@ -19,7 +19,6 @@ import {
   Building,
   ChevronDown,
   ChevronRight,
-  MapPin,
   Loader2,
   DollarSign,
   MessageSquare,
@@ -45,7 +44,6 @@ import type {
   ProductSearchResult,
   Supplier,
   SupplierProduct,
-  ItemsBySupplier,
   Location,
 } from '../../types/procurement.types';
 
