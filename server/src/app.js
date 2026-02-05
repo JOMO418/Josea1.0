@@ -28,11 +28,9 @@ const app = express();
 // ===== CORS CONFIGURATION (MUST BE FIRST) =====
 // Allow frontend on multiple ports (Vite auto-selects available port)
 const allowedOrigins = process.env.ALLOWED_ORIGINS?.split(',') || [
+  'https://josea1-0.vercel.app',
   'http://localhost:3001',
-  'http://localhost:3002',
-  'http://localhost:3003',
-  'http://localhost:3004',
-  'http://localhost:3000', // Fallback for legacy
+  'http://localhost:5173'
 ];
 
 app.use(cors({
