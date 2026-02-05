@@ -807,14 +807,15 @@ export default function UserRoles() {
         {(Object.entries(ROLES) as Array<[keyof typeof ROLES, typeof ROLES[keyof typeof ROLES]]>).map(([key, config]) => {
           const Icon = config.icon;
           const roleKey = key.toLowerCase() as 'owner' | 'admin' | 'manager';
-          const fullAccess = PERMISSION_CATEGORIES.flatMap((c) => c.permissions).filter(
-            (p: any) => p[roleKey] === 'full'
+          const allPermissions = PERMISSION_CATEGORIES.flatMap((c) => c.permissions) as any[];
+          const fullAccess = allPermissions.filter(
+            (p) => p[roleKey] === 'full'
           ).length;
-          const partialAccess = PERMISSION_CATEGORIES.flatMap((c) => c.permissions).filter(
-            (p: any) => p[roleKey] === 'partial'
+          const partialAccess = allPermissions.filter(
+            (p) => p[roleKey] === 'partial'
           ).length;
-          const noAccess = PERMISSION_CATEGORIES.flatMap((c) => c.permissions).filter(
-            (p: any) => p[roleKey] === 'none'
+          const noAccess = allPermissions.filter(
+            (p) => p[roleKey] === 'none'
           ).length;
 
           return (

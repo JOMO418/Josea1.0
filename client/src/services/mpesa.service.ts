@@ -151,8 +151,7 @@ class MpesaService {
         fullPrefix.startsWith('115');
 
       // Simple validation: Check if starts with valid Kenyan mobile prefix
-      // Validate network (unused but kept for future use)
-      const _isValidNetwork = isSafaricom;
+      // Note: isSafaricom validation available for future use if needed
       if (networkPrefix !== '7' && networkPrefix !== '1') {
         return {
           valid: false,
