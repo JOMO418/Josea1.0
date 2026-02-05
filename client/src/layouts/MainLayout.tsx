@@ -3,11 +3,13 @@
 // Collapsible Drawer + Premium Glassmorphism Topbar
 // ============================================
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
 import { Menu, Bell, ChevronDown } from 'lucide-react';
 import { useStore } from '../store/useStore';
 import Sidebar from '../components/Sidebar';
+import AIFloatingButton from '../components/ai/AIFloatingButton';
+import AIChatInterface from '../components/ai/AIChatInterface';
 
 // ===== PAGE METADATA =====
 
@@ -30,8 +32,13 @@ export default function MainLayout() {
   const setSidebarOpen = useStore((state) => state.setSidebarOpen);
   const branchName = useStore((state) => state.branchName);
   const userName = useStore((state) => state.userName);
+  const userRole = useStore((state) => state.userRole);
+  const branchId = useStore((state) => state.branchId);
 
   const currentPage = PAGE_TITLES[location.pathname] || 'Dashboard';
+
+  // AI Chat State
+  const [isAIChatOpen, setIsAIChatOpen] = useState(false);
 
   // ===== AUTO-RECOVERY LOGIC: FORCE SIDEBAR OPEN (EXCEPT FOR POS/SALES) =====
   useEffect(() => {
@@ -164,6 +171,22 @@ export default function MainLayout() {
           JOSEA POS v1.0
         </p>
       </div>
+
+      {/* ===== JOSEA AI ASSISTANT ===== */}
+      <AIFloatingButton
+        onClick={() => setIsAIChatOpen(!isAIChatOpen)}
+        userRole={userRole || 'MANAGER'}
+        isOpen={isAIChatOpen}
+      />
+
+      <AIChatInterface
+        isOpen={isAIChatOpen}
+        onClose={() => setIsAIChatOpen(false)}
+        userRole={userRole || 'MANAGER'}
+        userName={userName || 'User'}
+        branchId={branchId}
+        branchName={branchName || 'Branch'}
+      />
     </div>
   );
 }

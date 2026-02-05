@@ -219,8 +219,23 @@ exports.createSale = async (req, res) => {
       // Calculate sum of all payments
       const paymentsTotal = payments.reduce((sum, p) => sum + parseFloat(p.amount), 0);
 
+      console.log('💰 [Payment Validation]:', {
+        subtotal,
+        discount: finalDiscount,
+        total,
+        payments,
+        paymentsTotal,
+        flagForVerification,
+        mpesaReceiptNumber
+      });
+
       // CRITICAL: Sum check - payments must exactly equal total
       if (Math.abs(paymentsTotal - total) > 0.01) { // Allow 1 cent tolerance for rounding
+        console.error('❌ [Payment Mismatch]:', {
+          paymentsTotal,
+          total,
+          difference: Math.abs(paymentsTotal - total)
+        });
         throw new Error(
           `Payment total (KES ${paymentsTotal.toFixed(2)}) does not match sale total (KES ${total.toFixed(2)}). ` +
           `Difference: KES ${Math.abs(paymentsTotal - total).toFixed(2)}`

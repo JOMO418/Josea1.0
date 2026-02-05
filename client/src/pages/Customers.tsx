@@ -4,7 +4,7 @@ import {
   Users, Phone, Search, X, Edit2, MessageCircle, ChevronDown, ChevronUp,
   CheckCircle, AlertCircle, DollarSign, Banknote, Smartphone, Bell, FileText,
   Printer, Calendar, Clock, ShoppingBag, TrendingUp, Filter, Receipt,
-  Package, CreditCard
+  Package, CreditCard, Maximize2, Minimize2
 } from 'lucide-react';
 import { formatDistanceToNow, format } from 'date-fns';
 import { api } from '../api/axios';
@@ -133,6 +133,7 @@ export default function Customers() {
   const [editPhone, setEditPhone] = useState('');
   const [expandedSales, setExpandedSales] = useState<Set<string>>(new Set());
   const [showSettled, setShowSettled] = useState(false);
+  const [isTableFullscreen, setIsTableFullscreen] = useState(false);
 
   // History filter state
   const [historyFilter, setHistoryFilter] = useState<'all' | 'sales' | 'payments'>('all');
@@ -157,6 +158,18 @@ export default function Customers() {
   useEffect(() => {
     fetchCustomers();
   }, [searchTerm]);
+
+  // ESC key to exit fullscreen
+  useEffect(() => {
+    const handleEscKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isTableFullscreen) {
+        setIsTableFullscreen(false);
+      }
+    };
+
+    document.addEventListener('keydown', handleEscKey);
+    return () => document.removeEventListener('keydown', handleEscKey);
+  }, [isTableFullscreen]);
 
   const fetchCustomers = async () => {
     try {
@@ -391,7 +404,36 @@ export default function Customers() {
 
       {/* THE WHITE LEDGER */}
       <div className="max-w-7xl mx-auto">
-        <div className="bg-white rounded-[2.5rem] shadow-2xl border border-zinc-200 overflow-hidden">
+        <div className={`bg-white rounded-[2.5rem] shadow-2xl border border-zinc-200 overflow-hidden transition-all duration-300 ${
+          isTableFullscreen
+            ? 'fixed inset-4 z-50 max-w-none rounded-xl'
+            : 'relative'
+        }`}>
+          {/* Fullscreen Toggle Button */}
+          <div className="absolute top-4 right-4 z-10">
+            <button
+              onClick={() => setIsTableFullscreen(!isTableFullscreen)}
+              className={`group flex items-center gap-2 px-4 py-2 rounded-xl font-bold text-sm transition-all shadow-lg ${
+                isTableFullscreen
+                  ? 'bg-gradient-to-r from-red-600 to-red-700 text-white hover:from-red-700 hover:to-red-800'
+                  : 'bg-gradient-to-r from-indigo-600 to-blue-600 text-white hover:from-indigo-700 hover:to-blue-700'
+              }`}
+              title={isTableFullscreen ? 'Exit Fullscreen (ESC)' : 'Expand Fullscreen'}
+            >
+              {isTableFullscreen ? (
+                <>
+                  <Minimize2 className="w-4 h-4" />
+                  <span>Exit Fullscreen</span>
+                </>
+              ) : (
+                <>
+                  <Maximize2 className="w-4 h-4" />
+                  <span>Fullscreen</span>
+                </>
+              )}
+            </button>
+          </div>
+
           {/* Table Header */}
           <div className="bg-zinc-50 border-b border-zinc-100 px-8 py-6">
             <div className="grid grid-cols-12 gap-4 items-center">
@@ -1672,6 +1714,14 @@ export default function Customers() {
           );
         })()}
       </AnimatePresence>
+
+      {/* Fullscreen Backdrop */}
+      {isTableFullscreen && (
+        <div
+          className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40"
+          onClick={() => setIsTableFullscreen(false)}
+        />
+      )}
     </div>
   );
 }

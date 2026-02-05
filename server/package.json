@@ -6,14 +6,18 @@
     "dev": "nodemon src/index.js",
     "start": "node src/index.js",
     "seed": "node prisma/seed.js",
+    "seed:add": "node prisma/add-demo-data.js",
     "worker": "node src/workers/worker.js",
     "migrate": "npx prisma migrate deploy",
-    "studio": "npx prisma studio"
+    "studio": "npx prisma studio",
+    "postinstall": "prisma generate",
+    "build": "prisma generate && prisma migrate deploy"
   },
   "prisma": {
     "seed": "node prisma/seed.js"
   },
   "dependencies": {
+    "@google/generative-ai": "^0.24.1",
     "@prisma/client": "^5.7.0",
     "axios": "^1.13.4",
     "bcryptjs": "^2.4.3",

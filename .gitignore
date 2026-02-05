@@ -44,3 +44,23 @@ node_modules/
 
 # --- Vite/Frontend ---
 .vite/
+
+# --- Documentation Files (Internal Only) ---
+# These are audit/planning docs, not for repo
+*_AUDIT.md
+*_CHECKLIST.md
+*_RECOMMENDATIONS.md
+*_STRATEGY.md
+*_FIXES.md
+*_COMPLETE.md
+*_CASES.md
+*_FIX.md
+PRODUCTION_SECURITY_AUDIT.md
+HOSTING_RECOMMENDATIONS.md
+DATA_POPULATION_STRATEGY.md
+JOSEA_AI_SECURITY_FIXES.md
+JOSEA_AI_TRAINING_COMPLETE.md
+JOSEA_AI_USE_CASES.md
+MPESA_PRODUCTION_CHECKLIST.md
+PRODUCT_QUERY_FIX.md
+DEPLOYMENT_CHECKLIST.md

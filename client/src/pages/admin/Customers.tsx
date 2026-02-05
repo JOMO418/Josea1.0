@@ -39,6 +39,8 @@ import {
   ArrowDownCircle,
   ArrowUpCircle,
   Banknote,
+  Maximize2,
+  Minimize2,
 } from 'lucide-react';
 import { api } from '../../api/axios';
 import { toast, Toaster } from 'sonner';
@@ -1186,6 +1188,7 @@ export default function AdminCustomers() {
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [customerDetails, setCustomerDetails] = useState<CustomerDetails | null>(null);
   const [loadingDetails, setLoadingDetails] = useState(false);
+  const [isTableFullscreen, setIsTableFullscreen] = useState(false);
 
   // ============================================
   // DEBOUNCED SEARCH
@@ -1198,6 +1201,20 @@ export default function AdminCustomers() {
 
     return () => clearTimeout(timer);
   }, [searchQuery]);
+
+  // ============================================
+  // ESC KEY TO EXIT FULLSCREEN
+  // ============================================
+  useEffect(() => {
+    const handleEscKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isTableFullscreen) {
+        setIsTableFullscreen(false);
+      }
+    };
+
+    document.addEventListener('keydown', handleEscKey);
+    return () => document.removeEventListener('keydown', handleEscKey);
+  }, [isTableFullscreen]);
 
   // ============================================
   // FETCH DATA
@@ -1552,8 +1569,37 @@ export default function AdminCustomers() {
       </div>
 
       {/* The White Elevated Table */}
-      <div className="bg-white rounded-2xl shadow-2xl border border-zinc-200 overflow-hidden">
-        <div className="overflow-x-auto">
+      <div className={`bg-white rounded-2xl shadow-2xl border border-zinc-200 overflow-hidden transition-all duration-300 ${
+        isTableFullscreen
+          ? 'fixed inset-4 z-50 max-w-none flex flex-col'
+          : 'relative'
+      }`}>
+        {/* Fullscreen Toggle Button - Highly Visible */}
+        <div className="absolute top-4 right-4 z-10">
+          <button
+            onClick={() => setIsTableFullscreen(!isTableFullscreen)}
+            className={`group flex items-center gap-2 px-4 py-2 rounded-xl font-bold text-sm transition-all shadow-lg ${
+              isTableFullscreen
+                ? 'bg-gradient-to-r from-red-600 to-red-700 text-white hover:from-red-700 hover:to-red-800'
+                : 'bg-gradient-to-r from-indigo-600 to-blue-600 text-white hover:from-indigo-700 hover:to-blue-700'
+            }`}
+            title={isTableFullscreen ? 'Exit Fullscreen (ESC)' : 'Expand Fullscreen'}
+          >
+            {isTableFullscreen ? (
+              <>
+                <Minimize2 className="w-4 h-4" />
+                <span>Exit Fullscreen</span>
+              </>
+            ) : (
+              <>
+                <Maximize2 className="w-4 h-4" />
+                <span>Fullscreen</span>
+              </>
+            )}
+          </button>
+        </div>
+
+        <div className={`overflow-x-auto ${isTableFullscreen ? 'flex-1' : ''}`}>
           {loading ? (
             <div className="flex flex-col items-center justify-center py-32">
               <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-zinc-900 mb-4"></div>
@@ -1905,6 +1951,14 @@ export default function AdminCustomers() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Fullscreen Backdrop */}
+      {isTableFullscreen && (
+        <div
+          className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40"
+          onClick={() => setIsTableFullscreen(false)}
+        />
+      )}
 
       {/* Toast Notifications */}
       <Toaster

@@ -37,7 +37,8 @@
       "Bash(npx tsc:*)",
       "Bash(test:*)",
       "Bash(npx prisma migrate:*)",
-      "Bash(if not exist scripts mkdir scripts)"
+      "Bash(if not exist scripts mkdir scripts)",
+      "Bash(npm outdated:*)"
     ],
     "deny": [],
     "ask": []

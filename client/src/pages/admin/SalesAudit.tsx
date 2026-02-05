@@ -20,6 +20,8 @@ import {
   Search,
   Settings,
   RotateCcw,
+  Maximize2,
+  Minimize2,
 } from 'lucide-react';
 import axios from '../../api/axios';
 import { toast, Toaster } from 'sonner';
@@ -150,6 +152,9 @@ export default function SalesAudit() {
   const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [openDropdownId, setOpenDropdownId] = useState<string | null>(null);
+  const [showUnflagConfirm, setShowUnflagConfirm] = useState(false);
+  const [unflagTarget, setUnflagTarget] = useState<Sale | null>(null);
+  const [isTableFullscreen, setIsTableFullscreen] = useState(false);
 
   // Filters
   const [branchFilter, setBranchFilter] = useState('');
@@ -183,6 +188,20 @@ export default function SalesAudit() {
     document.addEventListener('click', handleClickOutside);
     return () => document.removeEventListener('click', handleClickOutside);
   }, [openDropdownId]);
+
+  // ============================================
+  // ESC KEY TO EXIT FULLSCREEN
+  // ============================================
+  useEffect(() => {
+    const handleEscKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isTableFullscreen) {
+        setIsTableFullscreen(false);
+      }
+    };
+
+    document.addEventListener('keydown', handleEscKey);
+    return () => document.removeEventListener('keydown', handleEscKey);
+  }, [isTableFullscreen]);
 
   // ============================================
   // FETCH DATA
@@ -320,6 +339,36 @@ export default function SalesAudit() {
   const handleOpenReversalModal = (sale: Sale) => {
     setSelectedSale(sale);
     setIsReversalModalOpen(true);
+  };
+
+  // ============================================
+  // UNFLAG HANDLING
+  // ============================================
+  const handleUnflagSale = async (sale: Sale) => {
+    const loadingToast = toast.loading('Verifying and unflagging sale...');
+
+    try {
+      await axios.post(`/sales/${sale.id}/confirm-verification`, {
+        notes: 'Admin manual confirmation - payment verified',
+      });
+      toast.dismiss(loadingToast);
+      toast.success('✅ Sale verified and unflagged successfully!', {
+        description: 'The sale is now treated as a normal verified transaction',
+        duration: 4000,
+      });
+      setShowUnflagConfirm(false);
+      setUnflagTarget(null);
+      setIsDetailsModalOpen(false);
+      fetchSales();
+      fetchKPIs();
+    } catch (err: any) {
+      toast.dismiss(loadingToast);
+      console.error('Verification error:', err);
+      toast.error('Failed to verify sale', {
+        description: err.response?.data?.message || 'An error occurred',
+        duration: 5000,
+      });
+    }
   };
 
   const handleProcessReversal = async (decision: 'APPROVED' | 'REJECTED') => {
@@ -726,8 +775,50 @@ export default function SalesAudit() {
 
       {/* Sales Table */}
       <div className="max-w-[1600px] mx-auto">
-        <div className="bg-white rounded-3xl shadow-2xl overflow-hidden">
-          <div className="overflow-x-auto">
+        {/* Helpful Instruction */}
+        <div className="mb-4 flex items-center justify-between">
+          <div className="flex items-center gap-2 text-sm text-zinc-400">
+            <Package className="w-4 h-4" />
+            <span className="font-medium">
+              Click on any row to view full transaction details
+            </span>
+          </div>
+          <div className="text-xs text-zinc-500 font-medium">
+            Showing {sales.length} transactions
+          </div>
+        </div>
+
+        <div className={`bg-white rounded-3xl shadow-2xl overflow-hidden transition-all duration-300 ${
+          isTableFullscreen
+            ? 'fixed inset-4 z-50 max-w-none flex flex-col'
+            : 'relative'
+        }`}>
+          {/* Fullscreen Toggle Button - Highly Visible */}
+          <div className="absolute top-4 right-4 z-10">
+            <button
+              onClick={() => setIsTableFullscreen(!isTableFullscreen)}
+              className={`group flex items-center gap-2 px-4 py-2 rounded-xl font-bold text-sm transition-all shadow-lg ${
+                isTableFullscreen
+                  ? 'bg-gradient-to-r from-red-600 to-red-700 text-white hover:from-red-700 hover:to-red-800'
+                  : 'bg-gradient-to-r from-indigo-600 to-blue-600 text-white hover:from-indigo-700 hover:to-blue-700'
+              }`}
+              title={isTableFullscreen ? 'Exit Fullscreen (ESC)' : 'Expand Fullscreen'}
+            >
+              {isTableFullscreen ? (
+                <>
+                  <Minimize2 className="w-4 h-4" />
+                  <span>Exit Fullscreen</span>
+                </>
+              ) : (
+                <>
+                  <Maximize2 className="w-4 h-4" />
+                  <span>Fullscreen</span>
+                </>
+              )}
+            </button>
+          </div>
+
+          <div className={`overflow-x-auto ${isTableFullscreen ? 'flex-1' : ''}`}>
             <table className="w-full">
               <thead className="bg-zinc-50 border-b border-zinc-200">
                 <tr>
@@ -792,12 +883,12 @@ export default function SalesAudit() {
                         setSelectedSale(sale);
                         setIsDetailsModalOpen(true);
                       }}
-                      className={`transition-all cursor-pointer ${
+                      className={`transition-all cursor-pointer group ${
                         sale.flaggedForVerification && sale.mpesaVerificationStatus === 'PENDING'
-                          ? 'animate-pulse bg-red-50 border-l-4 border-l-red-600 hover:bg-red-100'
+                          ? 'animate-pulse bg-red-50 border-l-4 border-l-red-600 hover:bg-red-100 hover:shadow-md'
                           : sale.reversalStatus === 'PENDING'
-                          ? 'bg-amber-50/50 border-l-4 border-l-amber-500'
-                          : 'hover:bg-zinc-50'
+                          ? 'bg-amber-50/50 border-l-4 border-l-amber-500 hover:bg-amber-100 hover:shadow-md'
+                          : 'hover:bg-blue-50 hover:shadow-md border-l-4 border-l-transparent hover:border-l-blue-500'
                       }`}
                       style={
                         sale.flaggedForVerification && sale.mpesaVerificationStatus === 'PENDING'
@@ -840,20 +931,26 @@ export default function SalesAudit() {
                       <td className="px-6 py-4">
                         <div className="flex flex-col gap-1">
                           {sale.items.slice(0, 2).map((item, idx) => (
-                            <div key={idx} className="text-xs font-bold text-zinc-700">
+                            <div key={idx} className="text-xs font-bold text-zinc-700 truncate max-w-[200px]" title={item.product.name}>
                               {item.quantity}x {item.product.name}
                             </div>
                           ))}
                           {sale.items.length > 2 && (
+                            <div className="text-xs font-bold text-zinc-500">
+                              ... + {sale.items.length - 2} more items
+                            </div>
+                          )}
+                          {sale.items.length > 0 && (
                             <button
                               onClick={(e) => {
                                 e.stopPropagation();
                                 setSelectedSale(sale);
                                 setIsDetailsModalOpen(true);
                               }}
-                              className="text-xs font-bold text-blue-600 hover:text-blue-700 hover:underline text-left transition-colors"
+                              className="text-xs font-bold text-blue-600 hover:text-blue-700 hover:underline text-left transition-colors mt-1 flex items-center gap-1"
                             >
-                              + {sale.items.length - 2} More
+                              <Package className="w-3 h-3" />
+                              View All Details
                             </button>
                           )}
                         </div>
@@ -940,7 +1037,7 @@ export default function SalesAudit() {
 
                             {/* Dropdown Menu */}
                             {openDropdownId === sale.id && (
-                              <div className="absolute right-0 top-full mt-1 w-48 bg-white border border-zinc-200 rounded-xl shadow-xl z-50 overflow-hidden">
+                              <div className="absolute right-0 top-full mt-1 w-56 bg-white border border-zinc-200 rounded-xl shadow-xl z-50 overflow-hidden">
                                 <button
                                   onClick={(e) => {
                                     e.stopPropagation();
@@ -964,6 +1061,23 @@ export default function SalesAudit() {
                                   <Printer className="w-4 h-4 text-zinc-600" />
                                   <span className="text-sm font-medium text-zinc-900">Print Receipt</span>
                                 </button>
+
+                                {/* Unflag Button - Only show for flagged sales */}
+                                {sale.flaggedForVerification && sale.mpesaVerificationStatus === 'PENDING' && (
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setOpenDropdownId(null);
+                                      setUnflagTarget(sale);
+                                      setShowUnflagConfirm(true);
+                                    }}
+                                    className="w-full px-4 py-3 flex items-center gap-3 hover:bg-emerald-50 transition-colors text-left border-t border-zinc-100"
+                                  >
+                                    <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                                    <span className="text-sm font-medium text-emerald-900">Unflag & Verify</span>
+                                  </button>
+                                )}
+
                                 <button
                                   onClick={(e) => {
                                     e.stopPropagation();
@@ -1363,22 +1477,9 @@ export default function SalesAudit() {
                           </div>
                         </div>
                         <button
-                          onClick={async () => {
-                            if (!window.confirm('Are you sure you want to manually confirm this M-Pesa payment? This will unflag the sale.')) {
-                              return;
-                            }
-
-                            try {
-                              await axios.default.post(`/sales/${selectedSale.id}/confirm-verification`, {
-                                notes: 'Admin manual confirmation - payment verified through other means',
-                              });
-                              toast.success('✅ Sale verified and unflagged successfully!');
-                              setIsDetailsModalOpen(false);
-                              fetchSales(); // Refresh sales list
-                            } catch (err: any) {
-                              console.error('Verification error:', err);
-                              toast.error(err.response?.data?.message || 'Failed to verify sale');
-                            }
+                          onClick={() => {
+                            setUnflagTarget(selectedSale);
+                            setShowUnflagConfirm(true);
                           }}
                           className="w-full px-4 py-3 bg-red-600 text-white font-black rounded-xl hover:bg-red-700 transition-all uppercase tracking-wider shadow-lg flex items-center justify-center gap-2"
                         >
@@ -1399,6 +1500,107 @@ export default function SalesAudit() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Unflag Confirmation Modal */}
+      <AnimatePresence>
+        {showUnflagConfirm && unflagTarget && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[100] flex items-center justify-center p-4"
+            onClick={() => {
+              setShowUnflagConfirm(false);
+              setUnflagTarget(null);
+            }}
+          >
+            <motion.div
+              initial={{ scale: 0.9, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.9, y: 20 }}
+              onClick={(e) => e.stopPropagation()}
+              className="bg-white rounded-3xl shadow-2xl max-w-md w-full overflow-hidden"
+            >
+              {/* Header */}
+              <div className="bg-gradient-to-r from-emerald-500 to-green-500 px-8 py-6">
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center">
+                    <CheckCircle2 className="w-6 h-6 text-white" />
+                  </div>
+                  <div>
+                    <h2 className="text-2xl font-black text-white">Confirm Verification</h2>
+                    <p className="text-white/80 text-sm font-medium">
+                      Admin Override Action
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Content */}
+              <div className="p-8">
+                {/* Sale Info */}
+                <div className="mb-6 p-4 bg-zinc-50 rounded-xl border border-zinc-200">
+                  <div className="text-sm space-y-2">
+                    <div className="flex justify-between">
+                      <span className="text-zinc-600 font-medium">Receipt:</span>
+                      <span className="text-zinc-900 font-bold font-mono">{unflagTarget.receiptNumber}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-zinc-600 font-medium">Customer:</span>
+                      <span className="text-zinc-900 font-bold">{unflagTarget.customerName}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-zinc-600 font-medium">M-Pesa Amount:</span>
+                      <span className="text-emerald-600 font-bold">
+                        KES{' '}
+                        {unflagTarget.payments
+                          .filter((p) => p.method === 'MPESA')
+                          .reduce((sum, p) => sum + Number(p.amount), 0)
+                          .toLocaleString()}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Confirmation Message */}
+                <div className="mb-6 p-4 bg-emerald-50 border border-emerald-200 rounded-xl">
+                  <p className="text-sm text-emerald-900 font-medium leading-relaxed">
+                    Are you sure you want to <span className="font-black">manually verify</span> this M-Pesa payment?
+                    This will unflag the sale and treat it as a <span className="font-black">normal verified transaction</span>.
+                  </p>
+                </div>
+
+                {/* Action Buttons */}
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={() => {
+                      setShowUnflagConfirm(false);
+                      setUnflagTarget(null);
+                    }}
+                    className="flex-1 px-6 py-3 bg-zinc-200 text-zinc-700 rounded-xl hover:bg-zinc-300 transition-colors font-bold text-sm uppercase tracking-wide"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={() => handleUnflagSale(unflagTarget)}
+                    className="flex-1 px-6 py-3 bg-emerald-600 text-white rounded-xl hover:bg-emerald-700 transition-colors font-bold text-sm uppercase tracking-wide shadow-lg"
+                  >
+                    Confirm & Unflag
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Fullscreen Backdrop */}
+      {isTableFullscreen && (
+        <div
+          className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40"
+          onClick={() => setIsTableFullscreen(false)}
+        />
+      )}
 
       {/* Toast Notifications */}
       <Toaster

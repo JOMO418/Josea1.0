@@ -3,7 +3,7 @@
 // White-on-Dark Contrast + Sound Integration
 // ============================================
 
-import { Package, Plus } from 'lucide-react';
+import { Package, Plus, Car } from 'lucide-react';
 import { useStore } from '../store/useStore';
 import { notify } from '../utils/notification'; // Fixed import for sound utility
 
@@ -11,6 +11,8 @@ interface ProductCardProps {
   productId: string;
   name: string;
   partNumber?: string;
+  vehicleMake?: string;
+  vehicleModel?: string;
   price: number;
   stock: number;
   lowStockThreshold?: number;
@@ -18,18 +20,22 @@ interface ProductCardProps {
   isSelected?: boolean;
   dataIndex?: number;
   onSelect?: () => void;
+  onMouseEnter?: () => void;
 }
 
 export default function ProductCard({
   productId,
   name,
   partNumber,
+  vehicleMake,
+  vehicleModel,
   price,
   stock,
   imageUrl,
   isSelected = false,
   dataIndex,
   onSelect,
+  onMouseEnter,
 }: ProductCardProps) {
   const addToCart = useStore((state) => state.addToCart);
 
@@ -60,13 +66,12 @@ export default function ProductCard({
         price,
         stock,
         oemNumber: partNumber,
+        vehicleMake,
+        vehicleModel,
       });
 
       // Trigger Sound & Interactive Toast
       notify('info', `${name} added to cart`);
-
-      // Call onSelect if provided (for keyboard navigation)
-      onSelect?.();
     } else {
       notify('error', 'Item is currently out of stock');
     }
@@ -75,6 +80,7 @@ export default function ProductCard({
   return (
     <div
       onClick={handleAddToCart}
+      onMouseEnter={onMouseEnter}
       data-product-index={dataIndex}
       className={`
         group relative rounded-2xl overflow-hidden transition-all duration-200
@@ -107,52 +113,67 @@ export default function ProductCard({
         }
       `}</style>
       {/* Product Image Holder - Cleaner light background */}
-      <div className={`relative bg-zinc-50 h-40 flex items-center justify-center border-b border-zinc-100 ${isSelected ? 'mt-10' : ''}`}>
+      <div className={`relative bg-zinc-50 h-44 flex items-center justify-center border-b border-zinc-100 ${isSelected ? 'mt-10' : ''}`}>
         {imageUrl ? (
           <img src={imageUrl} alt={name} className="w-full h-full object-cover" />
         ) : (
-          <Package className="w-14 h-14 text-zinc-300 transition-transform group-hover:scale-110 duration-500" />
+          <Package className="w-16 h-16 text-zinc-300 transition-transform group-hover:scale-110 duration-500" />
         )}
 
-        {/* Floating Stock Circle (Top Right) */}
+        {/* Floating Stock Circle (Top Right) - Enhanced */}
         <div className="absolute top-3 right-3">
-          <div className={`${getStockColor()} h-7 min-w-[28px] px-2 rounded-full flex items-center justify-center gap-1 shadow-md border-2 border-white`}>
-            <span className="text-xs font-black text-white">{stock}</span>
+          <div className={`${getStockColor()} h-8 min-w-[32px] px-2.5 rounded-full flex items-center justify-center gap-1 shadow-lg border-2 border-white`}>
+            <span className="text-sm font-black text-white">{stock}</span>
           </div>
         </div>
 
         {/* Add to Cart Icon (Center Hover) */}
         {stock > 0 && (
           <div className="absolute inset-0 bg-white/40 backdrop-blur-[2px] opacity-0 group-hover:opacity-100 transition-all duration-300 flex items-center justify-center">
-            <div className="bg-zinc-950 text-white rounded-full p-3.5 shadow-xl transform translate-y-4 group-hover:translate-y-0 transition-all">
-              <Plus className="w-6 h-6 stroke-[3px]" />
+            <div className="bg-zinc-950 text-white rounded-full p-4 shadow-xl transform translate-y-4 group-hover:translate-y-0 transition-all">
+              <Plus className="w-7 h-7 stroke-[3px]" />
             </div>
           </div>
         )}
       </div>
 
       {/* Product Info - Dark text on White Card */}
-      <div className="p-4">
-        <h3 className="text-zinc-900 font-bold text-sm mb-1 line-clamp-2 leading-snug group-hover:text-blue-600 transition-colors">
+      <div className="p-5">
+        {/* Product Name - Maximum Prominence */}
+        <h3 className="text-zinc-950 font-black text-lg mb-2.5 line-clamp-2 leading-tight tracking-tight group-hover:text-blue-600 transition-colors">
           {name}
         </h3>
 
+        {/* Vehicle Fitment - Compact Display */}
+        {(vehicleMake || vehicleModel) && (
+          <div className="flex items-center gap-1.5 mb-2 bg-blue-50/80 border border-blue-200/50 rounded-md px-2 py-1">
+            <Car className="w-3 h-3 text-blue-600 flex-shrink-0" />
+            <p className="text-blue-700 text-[11px] font-bold leading-tight truncate">
+              {vehicleMake && vehicleModel ? (
+                <>{vehicleMake} {vehicleModel}</>
+              ) : (
+                <>{vehicleMake || vehicleModel}</>
+              )}
+            </p>
+          </div>
+        )}
+
         {partNumber && (
-          <p className="text-zinc-400 text-[10px] tracking-widest uppercase font-bold mb-3">
-            {partNumber}
+          <p className="text-zinc-500 text-[11px] tracking-wide uppercase font-semibold mb-4">
+            SKU: {partNumber}
           </p>
         )}
 
-        {/* Price & Status Section */}
-        <div className="flex items-end justify-between mt-auto">
-          <div className="flex flex-col">
-            <span className="text-zinc-400 text-[10px] font-bold uppercase">Price</span>
-            <span className="text-zinc-950 font-black text-lg leading-none">
+        {/* Price & Status Section - Enhanced Prominence */}
+        <div className="flex items-end justify-between mt-auto pt-3 border-t border-zinc-100">
+          <div className="flex flex-col gap-1">
+            <span className="text-zinc-500 text-[10px] font-bold uppercase tracking-wider">Price</span>
+            <span className="text-zinc-950 font-black text-2xl leading-none tracking-tight">
               KES {price.toLocaleString()}
             </span>
           </div>
 
-          <div className={`px-2.5 py-1 rounded-lg border text-[10px] font-black uppercase tracking-tighter ${getStockBadgeColor()}`}>
+          <div className={`px-3 py-1.5 rounded-lg border text-[11px] font-black uppercase tracking-tight ${getStockBadgeColor()}`}>
             {getStockText()}
           </div>
         </div>

@@ -16,6 +16,8 @@ import {
   Plus,
   Truck,
   DollarSign,
+  Maximize2,
+  Minimize2,
 } from 'lucide-react';
 import { formatKES } from '../../utils/formatter';
 import axios from '../../api/axios';
@@ -855,6 +857,7 @@ export default function GlobalInventory() {
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isWizardOpen, setIsWizardOpen] = useState(false);
+  const [isTableFullscreen, setIsTableFullscreen] = useState(false);
 
   const fetchProducts = async () => {
     try {
@@ -915,6 +918,20 @@ export default function GlobalInventory() {
 
     return () => clearTimeout(debounce);
   }, [searchQuery, viewContext]); // Re-fetch when viewContext changes
+
+  // ============================================
+  // ESC KEY TO EXIT FULLSCREEN
+  // ============================================
+  useEffect(() => {
+    const handleEscKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isTableFullscreen) {
+        setIsTableFullscreen(false);
+      }
+    };
+
+    document.addEventListener('keydown', handleEscKey);
+    return () => document.removeEventListener('keydown', handleEscKey);
+  }, [isTableFullscreen]);
 
   const handleManageProduct = (product: Product) => {
     setSelectedProduct(product);
@@ -1056,10 +1073,38 @@ export default function GlobalInventory() {
 
       {/* 3. The Data Terminal (High Contrast White Card) */}
       <div className="max-w-[1400px] mx-auto">
-        <div className="bg-white rounded-[1.5rem] shadow-[0_20px_50px_rgba(0,0,0,0.5)] overflow-hidden border border-zinc-800">
+        <div className={`bg-white rounded-[1.5rem] shadow-[0_20px_50px_rgba(0,0,0,0.5)] overflow-hidden border border-zinc-800 transition-all duration-300 ${
+          isTableFullscreen
+            ? 'fixed inset-4 z-50 max-w-none flex flex-col'
+            : 'relative'
+        }`}>
+          {/* Fullscreen Toggle Button - Highly Visible */}
+          <div className="absolute top-4 right-4 z-10">
+            <button
+              onClick={() => setIsTableFullscreen(!isTableFullscreen)}
+              className={`group flex items-center gap-2 px-4 py-2 rounded-xl font-bold text-sm transition-all shadow-lg ${
+                isTableFullscreen
+                  ? 'bg-gradient-to-r from-red-600 to-red-700 text-white hover:from-red-700 hover:to-red-800'
+                  : 'bg-gradient-to-r from-indigo-600 to-blue-600 text-white hover:from-indigo-700 hover:to-blue-700'
+              }`}
+              title={isTableFullscreen ? 'Exit Fullscreen (ESC)' : 'Expand Fullscreen'}
+            >
+              {isTableFullscreen ? (
+                <>
+                  <Minimize2 className="w-4 h-4" />
+                  <span>Exit Fullscreen</span>
+                </>
+              ) : (
+                <>
+                  <Maximize2 className="w-4 h-4" />
+                  <span>Fullscreen</span>
+                </>
+              )}
+            </button>
+          </div>
 
           {/* Table Content */}
-          <div className="overflow-x-auto">
+          <div className={`overflow-x-auto ${isTableFullscreen ? 'flex-1' : ''}`}>
             {loading ? (
               <div className="flex flex-col items-center justify-center py-32">
                 <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-zinc-900 mb-4"></div>
@@ -1317,6 +1362,14 @@ export default function GlobalInventory() {
           />
         )}
       </AnimatePresence>
+
+      {/* Fullscreen Backdrop */}
+      {isTableFullscreen && (
+        <div
+          className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40"
+          onClick={() => setIsTableFullscreen(false)}
+        />
+      )}
 
       {/* Toast Notifications */}
       <Toaster

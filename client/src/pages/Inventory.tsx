@@ -15,6 +15,8 @@ import {
   ShoppingCart,
   Printer,
   X,
+  Maximize2,
+  Minimize2,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
@@ -80,6 +82,7 @@ export default function Inventory() {
 
   const [searchTerm, setSearchTerm] = useState('');
   const [reorderMode, setReorderMode] = useState(false);
+  const [isTableFullscreen, setIsTableFullscreen] = useState(false);
 
   const [showOrderModal, setShowOrderModal] = useState(false);
   const [selectedItem, setSelectedItem] = useState<InventoryItem | null>(null);
@@ -110,6 +113,18 @@ export default function Inventory() {
   useEffect(() => {
     fetchInventory();
   }, [branchId]);
+
+  // ESC key to exit fullscreen
+  useEffect(() => {
+    const handleEscKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isTableFullscreen) {
+        setIsTableFullscreen(false);
+      }
+    };
+
+    document.addEventListener('keydown', handleEscKey);
+    return () => document.removeEventListener('keydown', handleEscKey);
+  }, [isTableFullscreen]);
 
   // KPI Calculations
   const totalItems = inventory.length;
@@ -296,7 +311,36 @@ export default function Inventory() {
       </div>
 
       {/* EXECUTIVE TABLE CARD */}
-      <div className="bg-white rounded-xl shadow-2xl overflow-hidden">
+      <div className={`bg-white rounded-xl shadow-2xl overflow-hidden transition-all duration-300 ${
+        isTableFullscreen
+          ? 'fixed inset-4 z-50 max-w-none flex flex-col'
+          : 'relative'
+      }`}>
+        {/* Fullscreen Toggle Button */}
+        <div className="absolute top-4 right-4 z-10">
+          <button
+            onClick={() => setIsTableFullscreen(!isTableFullscreen)}
+            className={`group flex items-center gap-2 px-4 py-2 rounded-xl font-bold text-sm transition-all shadow-lg ${
+              isTableFullscreen
+                ? 'bg-gradient-to-r from-red-600 to-red-700 text-white hover:from-red-700 hover:to-red-800'
+                : 'bg-gradient-to-r from-indigo-600 to-blue-600 text-white hover:from-indigo-700 hover:to-blue-700'
+            }`}
+            title={isTableFullscreen ? 'Exit Fullscreen (ESC)' : 'Expand Fullscreen'}
+          >
+            {isTableFullscreen ? (
+              <>
+                <Minimize2 className="w-4 h-4" />
+                <span>Exit Fullscreen</span>
+              </>
+            ) : (
+              <>
+                <Maximize2 className="w-4 h-4" />
+                <span>Fullscreen</span>
+              </>
+            )}
+          </button>
+        </div>
+
         {loading ? (
           <div className="flex items-center justify-center py-20">
             <Loader2 className="w-10 h-10 text-blue-500 animate-spin" />
@@ -318,7 +362,7 @@ export default function Inventory() {
             </div>
           </div>
         ) : (
-          <div className="overflow-x-auto">
+          <div className={`overflow-x-auto ${isTableFullscreen ? 'flex-1' : ''}`}>
             <table className="w-full">
               <thead className="bg-zinc-950 border-b border-zinc-200">
                 <tr>
@@ -579,6 +623,14 @@ export default function Inventory() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Fullscreen Backdrop */}
+      {isTableFullscreen && (
+        <div
+          className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40"
+          onClick={() => setIsTableFullscreen(false)}
+        />
+      )}
     </div>
   );
 }

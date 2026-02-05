@@ -8,7 +8,7 @@ import { format, isToday } from 'date-fns';
 import {
   Search, Calendar, Loader2, AlertCircle, ChevronDown,
   RotateCcw, DollarSign, Smartphone, Users,
-  TrendingUp, X, Printer, Package
+  TrendingUp, X, Printer, Package, Maximize2, Minimize2
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
@@ -80,6 +80,8 @@ export default function Sales() {
   const [amountToReverse, setAmountToReverse] = useState('');
   const [submittingReversal, setSubmittingReversal] = useState(false);
   const [showItemsModal, setShowItemsModal] = useState(false);
+  const [showDetailsModal, setShowDetailsModal] = useState(false);
+  const [isTableFullscreen, setIsTableFullscreen] = useState(false);
 
   // M-Pesa Verification Modal States
   const [showVerificationModal, setShowVerificationModal] = useState(false);
@@ -148,6 +150,18 @@ export default function Sales() {
   useEffect(() => {
     fetchSales();
   }, [selectedDate, branchId]);
+
+  // ESC key to exit fullscreen
+  useEffect(() => {
+    const handleEscKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isTableFullscreen) {
+        setIsTableFullscreen(false);
+      }
+    };
+
+    document.addEventListener('keydown', handleEscKey);
+    return () => document.removeEventListener('keydown', handleEscKey);
+  }, [isTableFullscreen]);
 
   const filteredSales = sales.filter((sale) => {
     const search = searchTerm.toLowerCase();
@@ -240,67 +254,56 @@ export default function Sales() {
     // 🚨 HIGHEST PRIORITY: M-Pesa Verification Pending (Flagged Sales)
     if (sale.flaggedForVerification && sale.mpesaVerificationStatus === 'PENDING') {
       return (
-        <div className="flex flex-col gap-1">
-          <div className="flex items-center gap-2">
-            <span className="relative flex h-4 w-4">
+        <div className="flex flex-col gap-0.5">
+          <div className="flex items-center gap-1">
+            <span className="relative flex h-3 w-3">
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-600 opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-4 w-4 bg-red-600"></span>
+              <span className="relative inline-flex rounded-full h-3 w-3 bg-red-600"></span>
             </span>
-            <span className="px-3 py-1 rounded-full text-xs font-black bg-red-600 text-white uppercase tracking-wider animate-pulse">
-              🚨 VERIFY M-PESA
+            <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-red-600 text-white uppercase tracking-wide animate-pulse">
+              VERIFY
             </span>
           </div>
-          <span className="text-[10px] text-red-600 font-bold">Click to verify</span>
+          <span className="text-[9px] text-red-600 font-bold">Click now</span>
         </div>
       );
     }
 
     if (sale.reversalStatus === 'PENDING') {
       return (
-        <span className="px-3 py-1 rounded-full text-xs font-bold bg-yellow-500 text-black">
-          REVERSAL PENDING
+        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-yellow-500 text-black uppercase">
+          PENDING
         </span>
       );
     }
 
     if (sale.isCredit && sale.creditStatus === 'PENDING') {
       return (
-        <span className="px-3 py-1 rounded-full text-xs font-bold bg-rose-500 text-white">
+        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-500 text-white uppercase">
           DENI
         </span>
       );
     }
 
     if (sale.isCredit && sale.creditStatus === 'PARTIAL') {
-      const totalCreditPaid = sale.creditPayments?.reduce((sum, p) => sum + Number(p.amount), 0) || 0;
       return (
-        <div className="flex flex-col gap-1">
-          <span className="px-3 py-1 rounded-full text-xs font-bold bg-orange-500 text-white inline-block w-fit">
-            PARTIAL
-          </span>
-          <span className="text-[10px] text-zinc-500">
-            Paid: KES {new Intl.NumberFormat('en-KE').format(totalCreditPaid)}
-          </span>
-        </div>
+        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-orange-500 text-white uppercase">
+          PARTIAL
+        </span>
       );
     }
 
     // Sale was on credit but is now fully paid - show history
     if (sale.isCredit && sale.creditStatus === 'PAID') {
       return (
-        <div className="flex flex-col gap-1">
-          <span className="px-3 py-1 rounded-full text-xs font-bold bg-emerald-500 text-white inline-block w-fit">
-            CLEARED
-          </span>
-          <span className="text-[10px] text-orange-500 font-medium">
-            Was DENI
-          </span>
-        </div>
+        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500 text-white uppercase">
+          CLEARED
+        </span>
       );
     }
 
     return (
-      <span className="px-3 py-1 rounded-full text-xs font-bold bg-emerald-500 text-white">
+      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500 text-white uppercase">
         PAID
       </span>
     );
@@ -398,8 +401,50 @@ export default function Sales() {
         </div>
       </div>
 
+      {/* Helpful Instruction */}
+      <div className="mb-4 flex items-center justify-between">
+        <div className="flex items-center gap-2 text-sm text-zinc-400">
+          <Package className="w-4 h-4" />
+          <span className="font-medium">
+            Click on any transaction to view full details
+          </span>
+        </div>
+        <div className="text-xs text-zinc-500 font-medium">
+          Showing {filteredSales.length} transactions
+        </div>
+      </div>
+
       {/* EXECUTIVE TABLE CARD */}
-      <div className="bg-white rounded-xl shadow-2xl overflow-hidden">
+      <div className={`bg-white rounded-xl shadow-2xl overflow-hidden transition-all duration-300 ${
+        isTableFullscreen
+          ? 'fixed inset-4 z-50 max-w-none flex flex-col'
+          : 'relative'
+      }`}>
+        {/* Fullscreen Toggle Button */}
+        <div className="absolute top-4 right-4 z-10">
+          <button
+            onClick={() => setIsTableFullscreen(!isTableFullscreen)}
+            className={`group flex items-center gap-2 px-4 py-2 rounded-xl font-bold text-sm transition-all shadow-lg ${
+              isTableFullscreen
+                ? 'bg-gradient-to-r from-red-600 to-red-700 text-white hover:from-red-700 hover:to-red-800'
+                : 'bg-gradient-to-r from-indigo-600 to-blue-600 text-white hover:from-indigo-700 hover:to-blue-700'
+            }`}
+            title={isTableFullscreen ? 'Exit Fullscreen (ESC)' : 'Expand Fullscreen'}
+          >
+            {isTableFullscreen ? (
+              <>
+                <Minimize2 className="w-4 h-4" />
+                <span>Exit Fullscreen</span>
+              </>
+            ) : (
+              <>
+                <Maximize2 className="w-4 h-4" />
+                <span>Fullscreen</span>
+              </>
+            )}
+          </button>
+        </div>
+
         {loading ? (
           <div className="flex items-center justify-center py-20">
             <Loader2 className="w-10 h-10 text-blue-500 animate-spin" />
@@ -419,29 +464,35 @@ export default function Sales() {
             </div>
           </div>
         ) : (
-          <div className="overflow-x-auto">
+          <div className={`overflow-x-auto ${isTableFullscreen ? 'flex-1' : ''}`}>
             <table className="w-full">
               <thead className="bg-zinc-950 border-b border-zinc-200">
                 <tr>
-                  <th className="px-6 py-4 text-left text-xs font-black text-white uppercase tracking-wider">
+                  <th className="px-3 py-4 text-left text-xs font-black text-white uppercase tracking-wider w-[100px]">
                     Receipt
                   </th>
-                  <th className="px-6 py-4 text-left text-xs font-black text-white uppercase tracking-wider">
+                  <th className="px-3 py-4 text-left text-xs font-black text-white uppercase tracking-wider w-[120px]">
                     Date & Time
                   </th>
-                  <th className="px-6 py-4 text-left text-xs font-black text-white uppercase tracking-wider">
+                  <th className="px-3 py-4 text-left text-xs font-black text-white uppercase tracking-wider w-[140px]">
                     Customer
                   </th>
-                  <th className="px-6 py-4 text-left text-xs font-black text-white uppercase tracking-wider">
-                    Payment Method
+                  <th className="px-3 py-4 text-left text-xs font-black text-white uppercase tracking-wider w-[180px]">
+                    <div className="flex items-center gap-1.5">
+                      <Package className="w-3 h-3" />
+                      Products
+                    </div>
                   </th>
-                  <th className="px-6 py-4 text-right text-xs font-black text-white uppercase tracking-wider">
-                    Split Amounts
+                  <th className="px-3 py-4 text-left text-xs font-black text-white uppercase tracking-wider w-[100px]">
+                    Payment
                   </th>
-                  <th className="px-6 py-4 text-left text-xs font-black text-white uppercase tracking-wider">
+                  <th className="px-3 py-4 text-right text-xs font-black text-white uppercase tracking-wider w-[110px]">
+                    Amounts
+                  </th>
+                  <th className="px-3 py-4 text-left text-xs font-black text-white uppercase tracking-wider w-[120px]">
                     Status
                   </th>
-                  <th className="px-6 py-4 text-center text-xs font-black text-white uppercase tracking-wider">
+                  <th className="px-3 py-4 text-center text-xs font-black text-white uppercase tracking-wider w-[100px]">
                     Actions
                   </th>
                 </tr>
@@ -450,15 +501,18 @@ export default function Sales() {
                 {filteredSales.map((sale) => (
                   <tr
                     key={sale.id}
-                    className={`transition-all ${
+                    className={`transition-all cursor-pointer ${
                       sale.flaggedForVerification && sale.mpesaVerificationStatus === 'PENDING'
-                        ? 'animate-pulse bg-red-50 border-l-4 border-l-red-600 hover:bg-red-100 cursor-pointer relative'
-                        : 'hover:bg-zinc-50'
+                        ? 'animate-pulse bg-red-50 border-l-4 border-l-red-600 hover:bg-red-100 relative'
+                        : 'hover:bg-blue-50 border-l-4 border-l-transparent hover:border-l-blue-500 hover:shadow-md'
                     }`}
                     onClick={() => {
                       if (sale.flaggedForVerification && sale.mpesaVerificationStatus === 'PENDING') {
                         setSelectedSale(sale);
                         setShowVerificationModal(true);
+                      } else {
+                        setSelectedSale(sale);
+                        setShowDetailsModal(true);
                       }
                     }}
                     style={
@@ -470,85 +524,113 @@ export default function Sales() {
                         : undefined
                     }
                   >
-                    {/* Receipt Column - Monospaced */}
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="flex items-center gap-2">
+                    {/* Receipt Column - Abbreviated */}
+                    <td className="px-3 py-3 whitespace-nowrap">
+                      <div className="flex items-center gap-1.5">
                         {sale.flaggedForVerification && sale.mpesaVerificationStatus === 'PENDING' && (
-                          <span className="relative flex h-4 w-4">
+                          <span className="relative flex h-3 w-3">
                             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-600 opacity-75"></span>
-                            <span className="relative inline-flex rounded-full h-4 w-4 bg-red-600"></span>
+                            <span className="relative inline-flex rounded-full h-3 w-3 bg-red-600"></span>
                           </span>
                         )}
-                        <span className={`font-mono font-bold text-sm ${
-                          sale.flaggedForVerification && sale.mpesaVerificationStatus === 'PENDING'
-                            ? 'text-red-700 font-black'
-                            : 'text-zinc-900'
-                        }`}>
-                          #{sale.receiptNumber}
+                        <span
+                          className={`font-mono font-bold text-xs ${
+                            sale.flaggedForVerification && sale.mpesaVerificationStatus === 'PENDING'
+                              ? 'text-red-700 font-black'
+                              : 'text-zinc-900'
+                          }`}
+                          title={`Full Receipt: ${sale.receiptNumber}`}
+                        >
+                          {sale.receiptNumber.length > 10
+                            ? `...${sale.receiptNumber.slice(-8)}`
+                            : sale.receiptNumber
+                          }
                         </span>
                       </div>
                     </td>
 
                     {/* Date & Time Column */}
-                    <td className="px-6 py-4 whitespace-nowrap">
+                    <td className="px-3 py-3 whitespace-nowrap">
                       <div>
-                        <p className="text-sm font-semibold text-zinc-900">
-                          {format(new Date(sale.createdAt), 'dd MMM yyyy')}
+                        <p className="text-xs font-semibold text-zinc-900">
+                          {format(new Date(sale.createdAt), 'dd MMM yy')}
                         </p>
-                        <p className="text-xs text-zinc-500">
+                        <p className="text-[10px] text-zinc-500">
                           {format(new Date(sale.createdAt), 'hh:mm a')}
                         </p>
                       </div>
                     </td>
 
                     {/* Customer Column */}
-                    <td className="px-6 py-4">
+                    <td className="px-3 py-3">
                       {sale.isWalkIn ? (
-                        <div className="flex items-center gap-2 text-zinc-500 italic">
-                          <Users className="w-4 h-4" />
-                          <span className="text-sm">Walk-in Customer</span>
+                        <div className="flex items-center gap-1.5 text-zinc-500 italic">
+                          <Users className="w-3 h-3" />
+                          <span className="text-xs">Walk-in</span>
                         </div>
                       ) : (
                         <div>
-                          <p className="font-semibold text-sm text-zinc-900">
+                          <p className="font-semibold text-xs text-zinc-900 truncate max-w-[130px]" title={sale.customerName}>
                             {sale.customerName}
                           </p>
                           {sale.customerPhone && (
-                            <p className="text-xs text-zinc-500 font-mono">
-                              {sale.customerPhone}
+                            <p className="text-[10px] text-zinc-500 font-mono">
+                              {sale.customerPhone.slice(0, 10)}...
                             </p>
                           )}
                         </div>
                       )}
                     </td>
 
-                    {/* Payment Column - Vertical Rows */}
-                    <td className="px-6 py-4">
-                      <div className="space-y-1">
+                    {/* Products Column */}
+                    <td className="px-3 py-3">
+                      <div className="flex flex-col gap-0.5">
+                        {sale.items && sale.items.length > 0 ? (
+                          <>
+                            {sale.items.slice(0, 1).map((item, idx) => (
+                              <div key={idx} className="text-xs font-semibold text-zinc-700 truncate max-w-[170px]" title={item.product.name}>
+                                {item.quantity}x {item.product.name}
+                              </div>
+                            ))}
+                            {sale.items.length > 1 && (
+                              <span className="text-[10px] text-zinc-500 font-bold">
+                                +{sale.items.length - 1} more...
+                              </span>
+                            )}
+                          </>
+                        ) : (
+                          <span className="text-[10px] text-zinc-400 italic">No items</span>
+                        )}
+                      </div>
+                    </td>
+
+                    {/* Payment Column - Compact */}
+                    <td className="px-3 py-3">
+                      <div className="space-y-0.5">
                         {sale.payments.map((payment, idx) => (
                           <div
                             key={idx}
-                            className="flex items-center gap-2 text-xs"
+                            className="flex items-center gap-1 text-[10px]"
                           >
                             {payment.method === 'CASH' && (
                               <>
-                                <DollarSign className="w-3 h-3 text-emerald-600" />
-                                <span className="font-semibold text-zinc-700">
+                                <DollarSign className="w-2.5 h-2.5 text-emerald-600" />
+                                <span className="font-bold text-zinc-700">
                                   CASH
                                 </span>
                               </>
                             )}
                             {payment.method === 'MPESA' && (
                               <>
-                                <Smartphone className="w-3 h-3 text-blue-600" />
-                                <span className="font-semibold text-zinc-700">
+                                <Smartphone className="w-2.5 h-2.5 text-blue-600" />
+                                <span className="font-bold text-zinc-700">
                                   MPESA
                                 </span>
                               </>
                             )}
                             {payment.method === 'CREDIT' && (
                               <>
-                                <span className="text-xs font-bold text-rose-600 uppercase">
+                                <span className="text-[10px] font-bold text-rose-600 uppercase">
                                   DENI
                                 </span>
                               </>
@@ -558,11 +640,11 @@ export default function Sales() {
                       </div>
                     </td>
 
-                    {/* Amount Column - Aligned with Payment */}
-                    <td className="px-6 py-4 text-right">
-                      <div className="space-y-1">
+                    {/* Amount Column - Compact */}
+                    <td className="px-3 py-3 text-right">
+                      <div className="space-y-0.5">
                         {sale.payments.map((payment, idx) => (
-                          <div key={idx} className="text-xs">
+                          <div key={idx} className="text-[10px]">
                             <span className="font-mono font-bold text-zinc-900">
                               {new Intl.NumberFormat('en-KE').format(payment.amount)}
                             </span>
@@ -572,55 +654,60 @@ export default function Sales() {
                     </td>
 
                     {/* Status Badge */}
-                    <td className="px-6 py-4 whitespace-nowrap">
+                    <td className="px-3 py-3 whitespace-nowrap">
                       {getStatusBadge(sale)}
                     </td>
 
                     {/* Actions Menu - The Rule of Three */}
-                    <td className="px-6 py-4 whitespace-nowrap">
+                    <td className="px-3 py-3 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
                       <div className="relative group flex justify-center">
-                        <button className="p-2 hover:bg-zinc-200 rounded-lg transition-colors">
-                          <ChevronDown className="w-4 h-4 text-zinc-600" />
+                        <button className="p-1.5 hover:bg-zinc-200 rounded-lg transition-colors">
+                          <ChevronDown className="w-3.5 h-3.5 text-zinc-600" />
                         </button>
 
                         {/* Dropdown - Three Actions */}
-                        <div className="absolute right-0 top-full mt-1 bg-white border border-zinc-200 rounded-lg shadow-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-20 min-w-[200px]">
+                        <div className="absolute right-0 top-full mt-1 bg-white border border-zinc-200 rounded-lg shadow-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-20 min-w-[180px]">
                           {/* 1. Request Reversal */}
                           {sale.reversalStatus === 'NONE' && (
                             <button
-                              onClick={() => {
+                              onClick={(e) => {
+                                e.stopPropagation();
                                 setSelectedSale(sale);
                                 setAmountToReverse(sale.total.toString());
                                 setShowReversalModal(true);
                               }}
-                              className="w-full flex items-center gap-2 px-4 py-3 text-sm text-red-600 hover:bg-red-50 transition-colors"
+                              className="w-full flex items-center gap-2 px-3 py-2 text-xs text-red-600 hover:bg-red-50 transition-colors"
                             >
-                              <RotateCcw className="w-4 h-4" />
-                              Request Reversal
+                              <RotateCcw className="w-3.5 h-3.5" />
+                              Reversal
                             </button>
                           )}
 
-                          {/* 2. View Items */}
+                          {/* 2. View Full Details */}
                           <button
-                            onClick={() => {
+                            onClick={(e) => {
+                              e.stopPropagation();
                               setSelectedSale(sale);
-                              setShowItemsModal(true);
+                              setShowDetailsModal(true);
                             }}
-                            className={`w-full flex items-center gap-2 px-4 py-3 text-sm text-zinc-700 hover:bg-zinc-50 transition-colors ${
+                            className={`w-full flex items-center gap-2 px-3 py-2 text-xs text-zinc-700 hover:bg-zinc-50 transition-colors ${
                               sale.reversalStatus === 'NONE' ? 'border-t border-zinc-100' : ''
                             }`}
                           >
-                            <Package className="w-4 h-4" />
-                            View Items
+                            <Package className="w-3.5 h-3.5" />
+                            Details
                           </button>
 
                           {/* 3. Print Receipt */}
                           <button
-                            onClick={() => window.print()}
-                            className="w-full flex items-center gap-2 px-4 py-3 text-sm text-zinc-700 hover:bg-zinc-50 transition-colors border-t border-zinc-100"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              window.print();
+                            }}
+                            className="w-full flex items-center gap-2 px-3 py-2 text-xs text-zinc-700 hover:bg-zinc-50 transition-colors border-t border-zinc-100"
                           >
-                            <Printer className="w-4 h-4" />
-                            Print Receipt
+                            <Printer className="w-3.5 h-3.5" />
+                            Print
                           </button>
                         </div>
                       </div>
@@ -965,7 +1052,7 @@ export default function Sales() {
                             KES{' '}
                             {selectedSale.payments
                               .filter((p) => p.method === 'MPESA')
-                              .reduce((sum, p) => sum + p.amount, 0)
+                              .reduce((sum, p) => sum + Number(p.amount), 0)
                               .toLocaleString()}
                           </span>
                         </div>
@@ -1002,7 +1089,7 @@ export default function Sales() {
                       }
                     }}
                     placeholder="e.g., QH12ABC789"
-                    className="w-full px-4 py-3 border-2 border-zinc-300 rounded-xl text-center font-mono text-lg font-bold uppercase focus:outline-none focus:ring-4 focus:ring-red-500/50 focus:border-red-500 transition-all"
+                    className="w-full px-4 py-3 bg-white border-2 border-zinc-300 rounded-xl text-center font-mono text-lg font-bold text-zinc-900 uppercase placeholder:text-zinc-400 focus:outline-none focus:ring-4 focus:ring-red-500/50 focus:border-red-500 transition-all"
                     autoFocus
                     maxLength={15}
                   />
@@ -1044,6 +1131,221 @@ export default function Sales() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* COMPREHENSIVE TRANSACTION DETAILS MODAL */}
+      <AnimatePresence>
+        {showDetailsModal && selectedSale && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm"
+            onClick={() => {
+              setShowDetailsModal(false);
+              setSelectedSale(null);
+            }}
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              onClick={(e) => e.stopPropagation()}
+              className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-y-auto"
+            >
+              {/* Header */}
+              <div className="sticky top-0 bg-gradient-to-r from-blue-600 to-indigo-600 px-8 py-6 z-10">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="text-2xl font-black text-white uppercase tracking-tight">
+                      Transaction Details
+                    </h3>
+                    <p className="text-blue-100 text-sm font-mono mt-1">
+                      Receipt: #{selectedSale.receiptNumber}
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => {
+                      setShowDetailsModal(false);
+                      setSelectedSale(null);
+                    }}
+                    className="p-2 hover:bg-white/20 rounded-lg transition-colors"
+                  >
+                    <X className="w-5 h-5 text-white" />
+                  </button>
+                </div>
+              </div>
+
+              <div className="p-8">
+                {/* Transaction Info Card */}
+                <div className="mb-6 p-5 bg-zinc-50 rounded-2xl border border-zinc-200">
+                  <div className="grid grid-cols-3 gap-6">
+                    <div>
+                      <p className="text-xs text-zinc-500 font-bold uppercase tracking-wider mb-1.5">
+                        Date & Time
+                      </p>
+                      <p className="text-zinc-900 font-bold">
+                        {format(new Date(selectedSale.createdAt), 'dd MMM yyyy')}
+                      </p>
+                      <p className="text-sm text-zinc-600">
+                        {format(new Date(selectedSale.createdAt), 'hh:mm a')}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-zinc-500 font-bold uppercase tracking-wider mb-1.5">
+                        Customer
+                      </p>
+                      <p className="text-zinc-900 font-bold">
+                        {selectedSale.isWalkIn ? 'Walk-in Customer' : selectedSale.customerName}
+                      </p>
+                      {selectedSale.customerPhone && (
+                        <p className="text-xs text-zinc-600 font-mono">{selectedSale.customerPhone}</p>
+                      )}
+                    </div>
+                    <div>
+                      <p className="text-xs text-zinc-500 font-bold uppercase tracking-wider mb-1.5">
+                        Cashier
+                      </p>
+                      <p className="text-zinc-900 font-bold">{selectedSale.user.name}</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Products Table */}
+                <div className="mb-6">
+                  <h4 className="text-sm font-black text-zinc-900 uppercase tracking-wider mb-4 flex items-center gap-2">
+                    <Package className="w-4 h-4" />
+                    Products Sold ({selectedSale.items?.length || 0})
+                  </h4>
+                  <div className="border border-zinc-200 rounded-2xl overflow-hidden">
+                    <table className="w-full">
+                      <thead className="bg-zinc-900">
+                        <tr>
+                          <th className="px-4 py-3 text-left text-xs font-black text-white uppercase">
+                            Part Number
+                          </th>
+                          <th className="px-4 py-3 text-left text-xs font-black text-white uppercase">
+                            Product Name
+                          </th>
+                          <th className="px-4 py-3 text-center text-xs font-black text-white uppercase">
+                            Qty
+                          </th>
+                          <th className="px-4 py-3 text-right text-xs font-black text-white uppercase">
+                            Unit Price
+                          </th>
+                          <th className="px-4 py-3 text-right text-xs font-black text-white uppercase">
+                            Subtotal
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-zinc-200">
+                        {selectedSale.items && selectedSale.items.length > 0 ? (
+                          selectedSale.items.map((item, idx) => (
+                            <tr key={idx} className="hover:bg-zinc-50 transition-colors">
+                              <td className="px-4 py-3 text-sm font-mono text-zinc-700">
+                                {item.product.partNumber}
+                              </td>
+                              <td className="px-4 py-3">
+                                <p className="text-sm font-bold text-zinc-900">{item.product.name}</p>
+                              </td>
+                              <td className="px-4 py-3 text-center">
+                                <span className="px-3 py-1 bg-blue-100 text-blue-900 rounded-lg text-sm font-bold">
+                                  {item.quantity}
+                                </span>
+                              </td>
+                              <td className="px-4 py-3 text-right text-sm font-mono text-zinc-700">
+                                KES {new Intl.NumberFormat('en-KE').format(item.unitPrice)}
+                              </td>
+                              <td className="px-4 py-3 text-right text-sm font-bold text-zinc-900">
+                                KES {new Intl.NumberFormat('en-KE').format(item.total)}
+                              </td>
+                            </tr>
+                          ))
+                        ) : (
+                          <tr>
+                            <td colSpan={5} className="px-4 py-8 text-center text-zinc-500">
+                              No items found
+                            </td>
+                          </tr>
+                        )}
+                      </tbody>
+                      <tfoot className="bg-zinc-900">
+                        <tr>
+                          <td colSpan={4} className="px-4 py-4 text-right text-base font-black text-white uppercase">
+                            Grand Total:
+                          </td>
+                          <td className="px-4 py-4 text-right text-2xl font-black text-emerald-400">
+                            KES {new Intl.NumberFormat('en-KE').format(selectedSale.total)}
+                          </td>
+                        </tr>
+                      </tfoot>
+                    </table>
+                  </div>
+                </div>
+
+                {/* Payment Breakdown */}
+                <div className="mb-6">
+                  <h4 className="text-sm font-black text-zinc-900 uppercase tracking-wider mb-4 flex items-center gap-2">
+                    <DollarSign className="w-4 h-4" />
+                    Payment Breakdown
+                  </h4>
+                  <div className="space-y-3">
+                    {selectedSale.payments.map((payment, idx) => (
+                      <div
+                        key={idx}
+                        className="flex items-center justify-between p-4 bg-gradient-to-r from-zinc-50 to-zinc-100 border border-zinc-200 rounded-xl"
+                      >
+                        <div className="flex items-center gap-3">
+                          {payment.method === 'CASH' && <DollarSign className="w-5 h-5 text-emerald-600" />}
+                          {payment.method === 'MPESA' && <Smartphone className="w-5 h-5 text-blue-600" />}
+                          <div>
+                            <p className="text-sm font-bold text-zinc-900">{payment.method}</p>
+                          </div>
+                        </div>
+                        <span className="text-lg font-black text-zinc-900">
+                          KES {new Intl.NumberFormat('en-KE').format(payment.amount)}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Status Badge */}
+                <div className="flex items-center justify-center py-4">
+                  {getStatusBadge(selectedSale)}
+                </div>
+
+                {/* Action Buttons */}
+                <div className="flex gap-3 mt-6">
+                  <button
+                    onClick={() => window.print()}
+                    className="flex-1 px-6 py-3 bg-zinc-900 text-white font-bold rounded-xl hover:bg-zinc-800 transition-colors flex items-center justify-center gap-2"
+                  >
+                    <Printer className="w-4 h-4" />
+                    Print Receipt
+                  </button>
+                  <button
+                    onClick={() => {
+                      setShowDetailsModal(false);
+                      setSelectedSale(null);
+                    }}
+                    className="flex-1 px-6 py-3 bg-zinc-200 text-zinc-800 font-bold rounded-xl hover:bg-zinc-300 transition-colors"
+                  >
+                    Close
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Fullscreen Backdrop */}
+      {isTableFullscreen && (
+        <div
+          className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40"
+          onClick={() => setIsTableFullscreen(false)}
+        />
+      )}
     </div>
   );
 }

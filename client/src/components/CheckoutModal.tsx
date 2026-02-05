@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   X, Banknote, Smartphone, CreditCard, User,
-  CheckCircle, Zap, Printer, PlusCircle, ArrowRight, Phone, Clock, Eye
+  CheckCircle, Zap, Printer, PlusCircle, ArrowRight, Phone, Clock, Eye, Car
 } from 'lucide-react';
 import { useStore, useCartTotal } from '../store/useStore';
 import { api } from '../api/axios';
@@ -57,7 +57,6 @@ export default function CheckoutModal({ isOpen, onClose, onSuccess }: CheckoutMo
 
   // M-Pesa Payment States (using unified customer phone)
   const [mpesaReceiptNumber, setMpesaReceiptNumber] = useState<string | null>(null);
-  const [flagSaleForVerification, setFlagSaleForVerification] = useState(false);
 
   // Controls whether the full-screen MpesaPaymentModal overlay is visible
   const [showMpesaModal, setShowMpesaModal] = useState(false);
@@ -222,7 +221,6 @@ export default function CheckoutModal({ isOpen, onClose, onSuccess }: CheckoutMo
     setError('');
     // Reset M-Pesa state
     setMpesaReceiptNumber(null);
-    setFlagSaleForVerification(false);
   };
 
   const handleNewSale = () => {
@@ -299,8 +297,9 @@ export default function CheckoutModal({ isOpen, onClose, onSuccess }: CheckoutMo
   // ---------------------------------------------------------------------------
   // handleMpesaPayment — opens the modal and returns a promise that resolves
   // once the modal tells us the outcome (success or failure).
+  // Returns: { success: boolean, flagged: boolean }
   // ---------------------------------------------------------------------------
-  const handleMpesaPayment = (): Promise<boolean> => {
+  const handleMpesaPayment = (): Promise<{ success: boolean; flagged: boolean }> => {
     return new Promise((resolve) => {
       // store resolve so the modal callbacks can call it
       mpesaResolveRef.current = resolve;
@@ -309,7 +308,7 @@ export default function CheckoutModal({ isOpen, onClose, onSuccess }: CheckoutMo
   };
 
   // ref to hold the resolve function across renders
-  const mpesaResolveRef = useRef<((value: boolean) => void) | null>(null);
+  const mpesaResolveRef = useRef<((value: { success: boolean; flagged: boolean }) => void) | null>(null);
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -338,13 +337,17 @@ export default function CheckoutModal({ isOpen, onClose, onSuccess }: CheckoutMo
     try {
       // STEP 1: Process M-Pesa payment if needed
       const mpesa = parseFloat(mpesaAmount) || 0;
+      let shouldFlagSale = false; // Track if sale should be flagged for verification
+
       if (mpesa > 0) {
         // Phone validation already done above
-        const mpesaSuccess = await handleMpesaPayment();
-        if (!mpesaSuccess) {
+        const mpesaResult = await handleMpesaPayment();
+        if (!mpesaResult.success) {
           setLoading(false);
           return;
         }
+        // If user clicked "Complete Later", flag this sale for verification
+        shouldFlagSale = mpesaResult.flagged;
       }
 
       // STEP 2: Create sale with payment details
@@ -369,14 +372,26 @@ export default function CheckoutModal({ isOpen, onClose, onSuccess }: CheckoutMo
         saveToCustomerDB: hasCustomerName // Flag to save in customer database
       };
 
-      const response = await axiosInstance.post('/sales', {
+      // Log the request payload for debugging
+      const salePayload = {
         items: cart.map(i => ({ productId: i.productId, quantity: i.quantity, unitPrice: i.price })),
         payments,
+        discount: 0, // Explicitly set discount to 0
         ...customerData,
-        // M-Pesa verification flags
-        flagForVerification: flagSaleForVerification && mpesa > 0,
-        mpesaReceiptNumber: mpesaReceiptNumber || undefined
+        // M-Pesa verification flags - use shouldFlagSale instead of state
+        flagForVerification: shouldFlagSale && mpesa > 0,
+        mpesaReceiptNumber: mpesaReceiptNumber || null
+      };
+
+      console.log('🔍 [Complete Later] Sale payload:', {
+        total: cartTotal,
+        payments: salePayload.payments,
+        flagForVerification: salePayload.flagForVerification,
+        shouldFlagSale,
+        mpesaAmount: mpesa
       });
+
+      const response = await axiosInstance.post('/sales', salePayload);
 
       const saleData = response.data;
       setSuccessData({
@@ -390,12 +405,14 @@ export default function CheckoutModal({ isOpen, onClose, onSuccess }: CheckoutMo
         customerName: saleData.customerName || 'Walk-in Customer',
         customerPhone: saleData.customerPhone || '',
         mpesaReceiptNumber: saleData.mpesaReceiptNumber || mpesaReceiptNumber || null,
-        isFlagged: flagSaleForVerification && mpesa > 0,
+        isFlagged: shouldFlagSale && mpesa > 0,
         items: cart.map(i => ({
           name: i.name,
           quantity: i.quantity,
           price: i.price,
-          total: i.price * i.quantity
+          total: i.price * i.quantity,
+          vehicleMake: i.vehicleMake,
+          vehicleModel: i.vehicleModel
         })),
         servedBy: saleData.user?.name || 'Staff',
         branchName: saleData.branch?.name || 'Branch',
@@ -405,8 +422,10 @@ export default function CheckoutModal({ isOpen, onClose, onSuccess }: CheckoutMo
 
       notifySaleComplete(saleData.receiptNumber, cartTotal, () => {}, () => {});
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Transaction Failed');
-      notifyApiError('Checkout Error', 'Backend payment mismatch');
+      console.error('❌ [Sale Creation Error]:', err.response?.data || err.message);
+      const errorMessage = err.response?.data?.message || 'Transaction Failed';
+      setError(errorMessage);
+      notifyApiError('Checkout Error', errorMessage);
     } finally {
       setLoading(false);
     }
@@ -561,6 +580,11 @@ export default function CheckoutModal({ isOpen, onClose, onSuccess }: CheckoutMo
                         <span style={{ flex: 1, fontWeight: 'bold' }}>{item.name}</span>
                         <span style={{ fontWeight: 'bold' }}>{item.total.toLocaleString()}</span>
                       </div>
+                      {(item.vehicleMake || item.vehicleModel) && (
+                        <div style={{ fontSize: '8px', color: '#0066cc', marginTop: '0.5mm' }}>
+                          Fits: {item.vehicleMake && item.vehicleModel ? `${item.vehicleMake} ${item.vehicleModel}` : (item.vehicleMake || item.vehicleModel)}
+                        </div>
+                      )}
                       <div style={{ fontSize: '9px', color: '#555' }}>
                         {item.quantity} x {item.price.toLocaleString()}
                       </div>
@@ -721,16 +745,14 @@ export default function CheckoutModal({ isOpen, onClose, onSuccess }: CheckoutMo
                           <p>✓ Stock has been deducted</p>
                           <p>⏳ Waiting for M-Pesa payment confirmation</p>
                           <p className="text-orange-400 font-bold mt-3">
-                            You can verify this sale in the Sales page
+                            Verify this sale in the Sales page
                           </p>
                         </div>
                       </div>
 
-                      {/* Amount Info */}
+                      {/* Amount Info - Single Card */}
                       <div className="w-full max-w-md bg-zinc-900/50 border border-zinc-800 rounded-xl p-4 mb-4">
                         <div className="grid grid-cols-2 gap-2 text-sm">
-                          <div className="text-zinc-500">Total Amount:</div>
-                          <div className="text-white font-bold text-right">KES {successData.total.toLocaleString()}</div>
                           <div className="text-zinc-500">M-Pesa Expected:</div>
                           <div className="text-orange-400 font-bold text-right">KES {successData.mpesaPaid.toLocaleString()}</div>
                         </div>
@@ -784,51 +806,56 @@ export default function CheckoutModal({ isOpen, onClose, onSuccess }: CheckoutMo
                     </div>
                   )}
 
-                  {/* Sale Summary */}
-                  <div className="w-full max-w-md bg-zinc-900/50 border border-zinc-800 rounded-xl p-4 mb-4">
-                    <div className="grid grid-cols-2 gap-2 text-sm">
-                      <div className="text-zinc-500">Total:</div>
-                      <div className="text-white font-bold text-right">KES {successData.total.toLocaleString()}</div>
-                      {successData.cashPaid > 0 && (
-                        <>
-                          <div className="text-zinc-500">Cash:</div>
-                          <div className="text-emerald-400 text-right">KES {successData.cashPaid.toLocaleString()}</div>
-                        </>
-                      )}
-                      {successData.mpesaPaid > 0 && (
-                        <>
-                          <div className="text-zinc-500">M-Pesa:</div>
-                          <div className="text-blue-400 text-right">KES {successData.mpesaPaid.toLocaleString()}</div>
-                        </>
-                      )}
-                      {successData.creditAmount > 0 && (
-                        <>
-                          <div className="text-zinc-500">Credit (DENI):</div>
-                          <div className="text-rose-400 font-bold text-right">KES {successData.creditAmount.toLocaleString()}</div>
-                        </>
-                      )}
+                  {/* Sale Summary - Only show for non-flagged sales */}
+                  {!successData.isFlagged && (
+                    <div className="w-full max-w-md bg-zinc-900/50 border border-zinc-800 rounded-xl p-4 mb-4">
+                      <div className="grid grid-cols-2 gap-2 text-sm">
+                        <div className="text-zinc-500">Total:</div>
+                        <div className="text-white font-bold text-right">KES {successData.total.toLocaleString()}</div>
+                        {successData.cashPaid > 0 && (
+                          <>
+                            <div className="text-zinc-500">Cash:</div>
+                            <div className="text-emerald-400 text-right">KES {successData.cashPaid.toLocaleString()}</div>
+                          </>
+                        )}
+                        {successData.mpesaPaid > 0 && (
+                          <>
+                            <div className="text-zinc-500">M-Pesa:</div>
+                            <div className="text-blue-400 text-right">KES {successData.mpesaPaid.toLocaleString()}</div>
+                          </>
+                        )}
+                        {successData.creditAmount > 0 && (
+                          <>
+                            <div className="text-zinc-500">Credit (DENI):</div>
+                            <div className="text-rose-400 font-bold text-right">KES {successData.creditAmount.toLocaleString()}</div>
+                          </>
+                        )}
+                      </div>
                     </div>
-                  </div>
+                  )}
                 </div>
 
                 {/* Fixed Bottom Section - Always Visible */}
                 <div className="flex-shrink-0 p-6 bg-zinc-900/80 border-t border-zinc-800">
                   {/* Action Buttons */}
                   {successData.isFlagged ? (
-                    /* Flagged Sale Buttons */
-                    <div className="w-full max-w-lg mx-auto mb-4 no-print">
+                    /* Flagged Sale Buttons - Two buttons side by side */
+                    <div className="grid grid-cols-2 gap-4 w-full max-w-lg mx-auto mb-4 no-print">
                       <button
                         onClick={() => {
                           handleNewSale();
                           navigate('/sales');
                         }}
-                        className="w-full flex items-center justify-center gap-3 py-4 bg-orange-600 text-white font-black rounded-2xl hover:bg-orange-500 transition-all uppercase italic shadow-lg shadow-orange-600/20"
+                        className="flex items-center justify-center gap-2 py-4 bg-orange-600 text-white font-black rounded-2xl hover:bg-orange-500 transition-all uppercase italic shadow-lg shadow-orange-600/20"
                       >
-                        <Eye size={20} /> VIEW IN SALES PAGE
+                        <Eye size={18} /> VERIFY PAYMENT
                       </button>
-                      <p className="text-zinc-500 text-xs text-center mt-3">
-                        Track this sale and verify M-Pesa payment in the Sales page
-                      </p>
+                      <button
+                        onClick={handleNewSale}
+                        className="flex items-center justify-center gap-2 py-4 bg-blue-600 text-white font-black rounded-2xl hover:bg-blue-500 transition-all uppercase italic shadow-lg shadow-blue-600/20"
+                      >
+                        <PlusCircle size={18} /> NEW SALE
+                      </button>
                     </div>
                   ) : (
                     /* Normal Sale Buttons */
@@ -848,12 +875,14 @@ export default function CheckoutModal({ isOpen, onClose, onSuccess }: CheckoutMo
                     </div>
                   )}
 
-                  {/* Keyboard Hints */}
-                  <div className="flex justify-center gap-6 text-zinc-600 text-[10px] font-mono mb-3">
-                    <span>P = Print</span>
-                    <span>N = New Sale</span>
-                    <span>ESC = Close</span>
-                  </div>
+                  {/* Keyboard Hints - Only for non-flagged sales */}
+                  {!successData.isFlagged && (
+                    <div className="flex justify-center gap-6 text-zinc-600 text-[10px] font-mono mb-3">
+                      <span>P = Print</span>
+                      <span>N = New Sale</span>
+                      <span>ESC = Close</span>
+                    </div>
+                  )}
 
                   {/* Branding Footer */}
                   <p className="text-zinc-600 text-[10px] font-black uppercase tracking-[0.3em] text-center">
@@ -880,11 +909,26 @@ export default function CheckoutModal({ isOpen, onClose, onSuccess }: CheckoutMo
                         <p className="text-zinc-500 text-[9px] font-black uppercase tracking-wider mb-1">Amount Due</p>
                         <h3 className="text-5xl font-black text-white tracking-tight">KES {cartTotal.toLocaleString()}</h3>
                       </div>
-                      <div className="space-y-2 opacity-30 max-h-64 overflow-y-auto">
+                      <div className="space-y-3 opacity-40 max-h-64 overflow-y-auto">
                         {cart.map(item => (
-                          <div key={item.productId} className="flex justify-between text-xs font-bold">
-                            <span className="text-zinc-400 truncate">{item.name} x{item.quantity}</span>
-                            <span className="text-white ml-2">{(item.price * item.quantity).toLocaleString()}</span>
+                          <div key={item.productId} className="space-y-1">
+                            <div className="flex justify-between text-xs font-bold">
+                              <span className="text-zinc-400 truncate">{item.name} x{item.quantity}</span>
+                              <span className="text-white ml-2">{(item.price * item.quantity).toLocaleString()}</span>
+                            </div>
+                            {/* Vehicle Fitment */}
+                            {(item.vehicleMake || item.vehicleModel) && (
+                              <div className="flex items-center gap-1 text-[10px]">
+                                <Car className="w-2.5 h-2.5 text-blue-500 flex-shrink-0" />
+                                <span className="text-blue-400 font-medium">
+                                  {item.vehicleMake && item.vehicleModel ? (
+                                    <>{item.vehicleMake} {item.vehicleModel}</>
+                                  ) : (
+                                    <>{item.vehicleMake || item.vehicleModel}</>
+                                  )}
+                                </span>
+                              </div>
+                            )}
                           </div>
                         ))}
                       </div>
@@ -1062,7 +1106,7 @@ export default function CheckoutModal({ isOpen, onClose, onSuccess }: CheckoutMo
       onClose={() => {
         setShowMpesaModal(false);
         setLoading(false);
-        mpesaResolveRef.current?.(false);
+        mpesaResolveRef.current?.({ success: false, flagged: false });
         mpesaResolveRef.current = null;
       }}
       amount={mpesa}
@@ -1072,21 +1116,21 @@ export default function CheckoutModal({ isOpen, onClose, onSuccess }: CheckoutMo
       onPaymentSuccess={(receiptNum) => {
         setMpesaReceiptNumber(receiptNum);
         setShowMpesaModal(false);
-        mpesaResolveRef.current?.(true);
+        mpesaResolveRef.current?.({ success: true, flagged: false });
         mpesaResolveRef.current = null;
       }}
       onPaymentFailed={(reason) => {
         setError(reason);
         setShowMpesaModal(false);
         setLoading(false);
-        mpesaResolveRef.current?.(false);
+        mpesaResolveRef.current?.({ success: false, flagged: false });
         mpesaResolveRef.current = null;
       }}
       onCompleteLater={async () => {
-        setFlagSaleForVerification(true);
+        // Complete Later: Flag the sale for verification and proceed with sale creation
         setShowMpesaModal(false);
         setLoading(false);
-        mpesaResolveRef.current?.(true);
+        mpesaResolveRef.current?.({ success: true, flagged: true });
         mpesaResolveRef.current = null;
       }}
     />

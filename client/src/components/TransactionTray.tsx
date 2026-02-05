@@ -5,7 +5,7 @@
 // ============================================
 
 import { useState, useEffect, useRef, forwardRef, useImperativeHandle } from 'react';
-import { ShoppingCart, Trash2, Plus, Minus, CreditCard, ReceiptText } from 'lucide-react';
+import { ShoppingCart, Trash2, Plus, Minus, CreditCard, ReceiptText, Car } from 'lucide-react';
 import { useStore, useCartTotal } from '../store/useStore';
 import { notify } from '../utils/notification';
 
@@ -337,12 +337,27 @@ const TransactionTray = forwardRef<TransactionTrayRef, TransactionTrayProps>(
               )}
               <div className="flex items-start justify-between mb-4">
                 <div className="flex-1">
-                  <h3 className="text-zinc-950 font-black text-lg leading-tight mb-1">
+                  <h3 className="text-zinc-950 font-black text-lg leading-tight mb-2">
                     {item.name}
                   </h3>
+
+                  {/* Vehicle Fitment Display */}
+                  {(item.vehicleMake || item.vehicleModel) && (
+                    <div className="flex items-center gap-1.5 mb-2 bg-blue-50/80 border border-blue-200/50 rounded-md px-2 py-1 w-fit">
+                      <Car className="w-3 h-3 text-blue-600 flex-shrink-0" />
+                      <span className="text-blue-700 text-[11px] font-bold leading-tight">
+                        {item.vehicleMake && item.vehicleModel ? (
+                          <>{item.vehicleMake} {item.vehicleModel}</>
+                        ) : (
+                          <>{item.vehicleMake || item.vehicleModel}</>
+                        )}
+                      </span>
+                    </div>
+                  )}
+
                   {item.oemNumber && (
                     <span className="px-2 py-0.5 bg-zinc-100 text-zinc-500 text-[10px] font-black rounded-md uppercase">
-                      OEM: {item.oemNumber}
+                      SKU: {item.oemNumber}
                     </span>
                   )}
                 </div>

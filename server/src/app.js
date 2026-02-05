@@ -17,6 +17,8 @@ const branchRoutes = require('./routes/branches');
 const procurementRoutes = require('./routes/procurement');
 const settingsRoutes = require('./routes/settings');
 const mpesaRoutes = require('./routes/mpesa');
+const adminAIRoutes = require('./routes/adminAI.routes');
+const managerAIRoutes = require('./routes/managerAI.routes');
 
 // Import middleware (same directory level)
 const errorHandler = require('./middleware/errorHandler');
@@ -43,6 +45,20 @@ app.use(cors({
 
 // Security middleware (after CORS)
 app.use(helmet());
+
+// HTTPS enforcement in production
+if (process.env.NODE_ENV === 'production') {
+  app.use((req, res, next) => {
+    // Check if request is secure (HTTPS)
+    if (!req.secure && req.get('x-forwarded-proto') !== 'https') {
+      return res.status(403).json({
+        error: 'HTTPS Required',
+        message: 'This API requires HTTPS in production. Please use https:// instead of http://'
+      });
+    }
+    next();
+  });
+}
 
 // Body parsing middleware
 app.use(express.json({ limit: '10mb' }));
@@ -84,6 +100,10 @@ app.use('/api/settings', settingsRoutes);
 // M-Pesa routes - use /api/payment to avoid Safaricom "URL contains MPESA" validation error
 app.use('/api/payment', mpesaRoutes);
 app.use('/api/mpesa', mpesaRoutes); // Keep for backward compatibility
+
+// AI Routes - Josea AI Assistant
+app.use('/api/admin-ai', adminAIRoutes);
+app.use('/api/manager-ai', managerAIRoutes);
 
 // 404 handler for undefined routes
 app.use((req, res, next) => {

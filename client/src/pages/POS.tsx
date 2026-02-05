@@ -19,6 +19,8 @@ interface Product {
   name: string;
   partNumber?: string;
   sellingPrice: number;
+  vehicleMake?: string;
+  vehicleModel?: string;
   inventory: Array<{
     quantity: number;
     branchId: string;
@@ -91,10 +93,17 @@ export default function POS() {
     searchInputRef.current?.focus();
   }, []);
 
-  // Ensure proper focus when mode changes
+  // Ensure proper focus when mode changes - CRITICAL for preventing stuck navigation
   useEffect(() => {
     if (focusMode === 'products' && productGridRef.current) {
-      productGridRef.current.focus();
+      // Small delay ensures DOM is ready
+      setTimeout(() => {
+        productGridRef.current?.focus();
+      }, 10);
+    } else if (focusMode === 'search' && searchInputRef.current) {
+      setTimeout(() => {
+        searchInputRef.current?.focus();
+      }, 10);
     }
   }, [focusMode]);
 
@@ -118,17 +127,33 @@ export default function POS() {
       e.preventDefault();
       setSelectedProductIndex(0);
       setFocusMode('products');
+      productGridRef.current?.focus();
     } else if (e.key === 'Escape') {
       e.preventDefault();
       setSearchTerm('');
       searchInputRef.current?.focus();
-    } else if (e.key === 'Tab' && e.shiftKey === false && filteredProducts.length > 0) {
+    } else if (e.key === 'Tab' && e.shiftKey === false) {
       e.preventDefault();
-      setFocusMode('tray');
+
+      // Check if tray has items
+      const cartItems = useStore.getState().cart;
+      const trayHasItems = cartItems.length > 0;
+
+      if (trayHasItems) {
+        // Move to tray
+        setFocusMode('tray');
+        trayComponentRef.current?.focusFirstItem();
+      } else if (filteredProducts.length > 0) {
+        // Tray empty, go to products
+        setSelectedProductIndex(0);
+        setFocusMode('products');
+        productGridRef.current?.focus();
+      }
+      // else stay in search
     }
   };
 
-  // Handle keyboard navigation in product grid
+  // Handle keyboard navigation in product grid - SMART NAVIGATION (Products ↔ Tray)
   const handleProductGridKeyDown = (e: React.KeyboardEvent) => {
     if (focusMode !== 'products' || filteredProducts.length === 0) return;
 
@@ -136,40 +161,66 @@ export default function POS() {
     const maxIndex = filteredProducts.length - 1;
     const currentRow = Math.floor(selectedProductIndex / cols);
     const currentCol = selectedProductIndex % cols;
+    const totalRows = Math.ceil(filteredProducts.length / cols);
     const isRightmostColumn = currentCol === cols - 1;
+
+    // Check if transaction tray has items
+    const cartItems = useStore.getState().cart;
+    const trayHasItems = cartItems.length > 0;
 
     switch (e.key) {
       case 'ArrowUp':
         e.preventDefault();
         if (selectedProductIndex < cols) {
-          // Move back to search if in first row
-          setFocusMode('search');
-          setSelectedProductIndex(-1);
-          searchInputRef.current?.focus();
+          // At top row - wrap to bottom of same column
+          const lastRowStartIndex = (totalRows - 1) * cols;
+          const targetIndex = lastRowStartIndex + currentCol;
+          // Make sure target index exists (last row might be incomplete)
+          setSelectedProductIndex(Math.min(targetIndex, maxIndex));
         } else {
-          setSelectedProductIndex(Math.max(0, selectedProductIndex - cols));
+          setSelectedProductIndex(selectedProductIndex - cols);
         }
         break;
 
       case 'ArrowDown':
         e.preventDefault();
-        setSelectedProductIndex(Math.min(maxIndex, selectedProductIndex + cols));
+        const newDownIndex = selectedProductIndex + cols;
+        if (newDownIndex <= maxIndex) {
+          setSelectedProductIndex(newDownIndex);
+        } else {
+          // At bottom row - wrap to top of same column
+          setSelectedProductIndex(currentCol);
+        }
         break;
 
       case 'ArrowLeft':
         e.preventDefault();
-        setSelectedProductIndex(Math.max(0, selectedProductIndex - 1));
+        if (selectedProductIndex > 0) {
+          setSelectedProductIndex(selectedProductIndex - 1);
+        } else {
+          // At leftmost (first product) - wrap to rightmost (last product)
+          setSelectedProductIndex(maxIndex);
+        }
         break;
 
       case 'ArrowRight':
         e.preventDefault();
-        // Check if we're at the rightmost column
+
+        // Check if at rightmost column or last product
         if (isRightmostColumn || selectedProductIndex === maxIndex) {
-          // Move to transaction tray
-          setFocusMode('tray');
-          trayComponentRef.current?.focusFirstItem();
+          // At the right edge - decide: go to tray or loop?
+          if (trayHasItems) {
+            // Tray has items - move to tray
+            setFocusMode('tray');
+            trayComponentRef.current?.focusFirstItem();
+          } else {
+            // Tray is empty - loop back to first product
+            setSelectedProductIndex(0);
+            requestAnimationFrame(() => productGridRef.current?.focus());
+          }
         } else {
-          setSelectedProductIndex(Math.min(maxIndex, selectedProductIndex + 1));
+          // Not at edge - move right normally
+          setSelectedProductIndex(selectedProductIndex + 1);
         }
         break;
 
@@ -178,12 +229,13 @@ export default function POS() {
         e.preventDefault();
         if (selectedProductIndex >= 0 && selectedProductIndex <= maxIndex) {
           const product = filteredProducts[selectedProductIndex];
-          handleAddToCart(product);
+          handleAddToCart(product); // Add to cart via keyboard
         }
         break;
 
       case 'Escape':
         e.preventDefault();
+        // Escape always returns to search bar
         setFocusMode('search');
         setSelectedProductIndex(-1);
         searchInputRef.current?.focus();
@@ -192,12 +244,19 @@ export default function POS() {
       case 'Tab':
         e.preventDefault();
         if (e.shiftKey) {
+          // Shift+Tab: Go back to search
           setFocusMode('search');
           setSelectedProductIndex(-1);
           searchInputRef.current?.focus();
         } else {
-          setFocusMode('tray');
-          trayComponentRef.current?.focusFirstItem();
+          // Tab: Move to transaction tray if it has items
+          if (trayHasItems) {
+            setFocusMode('tray');
+            trayComponentRef.current?.focusFirstItem();
+          } else {
+            // Tray empty - stay in products (visual feedback)
+            requestAnimationFrame(() => productGridRef.current?.focus());
+          }
         }
         break;
     }
@@ -213,11 +272,20 @@ export default function POS() {
         price: parseFloat(product.sellingPrice as any),
         stock: stock,
         oemNumber: product.partNumber,
+        vehicleMake: product.vehicleMake,
+        vehicleModel: product.vehicleModel,
       });
     }
   };
 
-  // Scroll selected product into view and focus grid
+  // Handle mouse entering a product (clears keyboard selection)
+  const handleProductMouseEnter = (index: number) => {
+    // Clear keyboard selection when mouse is used
+    setSelectedProductIndex(-1);
+    setFocusMode('search');
+  };
+
+  // Scroll selected product into view and focus grid - CRITICAL for preventing stuck navigation
   useEffect(() => {
     if (selectedProductIndex >= 0 && productGridRef.current) {
       const productCards = productGridRef.current.querySelectorAll('[data-product-index]');
@@ -225,9 +293,12 @@ export default function POS() {
       if (selectedCard) {
         selectedCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
       }
-      // Auto-focus the grid when a product is selected
+      // FORCE focus to stay in product grid during keyboard navigation
       if (focusMode === 'products') {
-        productGridRef.current.focus();
+        // Use requestAnimationFrame to ensure focus happens after any other DOM updates
+        requestAnimationFrame(() => {
+          productGridRef.current?.focus();
+        });
       }
     }
   }, [selectedProductIndex, focusMode]);
@@ -235,9 +306,10 @@ export default function POS() {
   // Prevent page scrolling but allow navigation handlers to work
   useEffect(() => {
     const handleGlobalKeyDown = (e: KeyboardEvent) => {
-      // Only prevent default for Space key to avoid page scroll
-      // Arrow keys are handled by individual components
-      if (e.key === ' ' && (focusMode === 'products' || focusMode === 'tray')) {
+      // Prevent page scrolling for navigation keys when in keyboard mode
+      const navigationKeys = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', ' '];
+
+      if (navigationKeys.includes(e.key) && (focusMode === 'products' || focusMode === 'tray')) {
         e.preventDefault();
       }
     };
@@ -246,9 +318,41 @@ export default function POS() {
     return () => window.removeEventListener('keydown', handleGlobalKeyDown);
   }, [focusMode]);
 
+  // Detect mouse movement for seamless keyboard-to-mouse switching
+  useEffect(() => {
+    let mouseMoveTimeout: NodeJS.Timeout;
+
+    const handleMouseMove = () => {
+      // Clear any existing timeout
+      clearTimeout(mouseMoveTimeout);
+
+      // Debounce: only clear keyboard selection after mouse stops moving briefly
+      mouseMoveTimeout = setTimeout(() => {
+        if (focusMode === 'products' && selectedProductIndex >= 0) {
+          // Mouse is active, clear keyboard selection
+          setSelectedProductIndex(-1);
+        }
+      }, 150); // Small delay to avoid flickering
+    };
+
+    window.addEventListener('mousemove', handleMouseMove);
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      clearTimeout(mouseMoveTimeout);
+    };
+  }, [focusMode, selectedProductIndex]);
+
   return (
     // Changed main background to a deeper black to make white cards "pop"
-    <div className="flex h-[calc(100vh-var(--topbar-height))] overflow-hidden bg-[#09090b]">
+    <div
+      className="flex h-[calc(100vh-var(--topbar-height))] overflow-hidden bg-[#09090b]"
+      onKeyDown={(e) => {
+        // Prevent arrow keys from scrolling the page at the container level
+        if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', ' '].includes(e.key)) {
+          e.preventDefault();
+        }
+      }}
+    >
       
       {/* ===== MAIN PRODUCT AREA (60%) ===== */}
       <div className="w-[60%] flex flex-col overflow-hidden border-r border-zinc-800/50">
@@ -292,6 +396,15 @@ export default function POS() {
           ref={productGridRef}
           className="flex-1 overflow-y-auto p-6 bg-zinc-950/30 focus:outline-none transition-all relative"
           onKeyDown={handleProductGridKeyDown}
+          onBlur={(e) => {
+            // Prevent focus loss during keyboard navigation
+            if (focusMode === 'products' && !e.currentTarget.contains(e.relatedTarget)) {
+              // Focus is leaving the grid - bring it back if we're in keyboard mode
+              requestAnimationFrame(() => {
+                productGridRef.current?.focus();
+              });
+            }
+          }}
           tabIndex={focusMode === 'products' ? 0 : -1}
           style={{ scrollBehavior: 'smooth' }}
         >
@@ -328,12 +441,14 @@ export default function POS() {
                   productId={product.id}
                   name={product.name}
                   partNumber={product.partNumber}
+                  vehicleMake={product.vehicleMake}
+                  vehicleModel={product.vehicleModel}
                   price={parseFloat(product.sellingPrice as any)}
                   stock={product.inventory?.[0]?.quantity || 0}
                   lowStockThreshold={product.lowStockThreshold}
                   isSelected={selectedProductIndex === index}
                   dataIndex={index}
-                  onSelect={() => handleAddToCart(product)}
+                  onMouseEnter={() => handleProductMouseEnter(index)}
                 />
               ))}
             </div>

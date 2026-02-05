@@ -17,6 +17,8 @@ interface CartItem {
   quantity: number;
   stock: number;
   oemNumber?: string;
+  vehicleMake?: string;
+  vehicleModel?: string;
 }
 
 interface DashboardState {
