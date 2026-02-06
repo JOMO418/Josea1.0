@@ -258,7 +258,7 @@ exports.createProduct = async (req, res, next) => {
 
 exports.updateProduct = async (req, res, next) => {
   try {
-    const { inventoryUpdates, supplierId, buyingPrice, ...productData } = req.body;
+    const { inventoryUpdates, supplierId, buyingPrice, imageData, ...productData } = req.body;
 
     console.log('📦 Product Update Request:', {
       productId: req.params.id,
@@ -266,6 +266,7 @@ exports.updateProduct = async (req, res, next) => {
       inventoryUpdates,
       supplierId,
       buyingPrice,
+      hasImageData: !!imageData,
       userId: req.user?.id,
     });
 
@@ -282,6 +283,12 @@ exports.updateProduct = async (req, res, next) => {
         success: false,
         message: 'Product not found'
       });
+    }
+
+    // Handle image data (base64 string from frontend)
+    if (imageData) {
+      // Store base64 image data as imageUrl
+      productData.imageUrl = imageData;
     }
 
     // Use transaction for atomic updates with audit trail
@@ -633,6 +640,7 @@ exports.getGlobalProducts = async (req, res, next) => {
         vehicleMake: product.vehicleMake,
         vehicleModel: product.vehicleModel,
         category: product.category,
+        imageUrl: product.imageUrl,
         costPrice: Number(product.costPrice || 0),
         sellingPrice: Number(product.sellingPrice || 0),
         lowStockThreshold: Number(product.lowStockThreshold || 0),

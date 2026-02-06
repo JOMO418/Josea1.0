@@ -79,6 +79,7 @@ model Product {
   vehicleMake       String?
   vehicleModel      String?
   vehicleEngine     String?
+  imageUrl          String?
   costPrice         Decimal         @db.Decimal(10, 2)
   minPrice          Decimal         @db.Decimal(10, 2)
   sellingPrice      Decimal         @db.Decimal(10, 2)

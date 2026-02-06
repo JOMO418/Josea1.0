@@ -21,6 +21,7 @@ interface Product {
   sellingPrice: number;
   vehicleMake?: string;
   vehicleModel?: string;
+  imageUrl?: string;
   inventory: Array<{
     quantity: number;
     branchId: string;
@@ -445,6 +446,7 @@ export default function POS() {
                   price={parseFloat(product.sellingPrice as any)}
                   stock={product.inventory?.[0]?.quantity || 0}
                   lowStockThreshold={product.lowStockThreshold}
+                  imageUrl={product.imageUrl}
                   isSelected={selectedProductIndex === index}
                   dataIndex={index}
                   onMouseEnter={() => handleProductMouseEnter(index)}

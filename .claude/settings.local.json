@@ -42,7 +42,11 @@
       "Bash(where:*)",
       "Bash(git add:*)",
       "Bash(git commit:*)",
-      "Bash(git push:*)"
+      "Bash(git push:*)",
+      "Bash(DATABASE_URL=\"postgresql://pram_user:CF8xGtDq8AqKhdQpzdEEzJaCi2GVWI2p@dpg-d629uq2g5rbc73f25rcg-a/pram_auto_spares\" npm run seed:*)",
+      "Bash(DATABASE_URL=\"postgresql://pram_user:CF8xGtDq8AqKhdQpzdEEzJaCi2GVWI2p@dpg-d629uq2g5rbc73f25rcg-a.virginia-postgres.render.com/pram_auto_spares\" npm run seed:*)",
+      "WebSearch",
+      "Bash(npx prisma db push:*)"
     ],
     "deny": [],
     "ask": []

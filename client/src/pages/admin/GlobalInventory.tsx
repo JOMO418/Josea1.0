@@ -18,6 +18,9 @@ import {
   DollarSign,
   Maximize2,
   Minimize2,
+  Image,
+  Upload,
+  Trash2,
 } from 'lucide-react';
 import { formatKES } from '../../utils/formatter';
 import axios from '../../api/axios';
@@ -53,6 +56,7 @@ interface Product {
   profitMargin: number;
   updatedAt: string;
   isActive: boolean;
+  imageUrl?: string;
 }
 
 interface Branch {
@@ -269,6 +273,7 @@ interface MasterControllerModalProps {
   branches: Branch[];
   suppliers: Supplier[];
   onSave: (productData: any, inventoryUpdates: InventoryUpdate[]) => void;
+  onDelete: (productId: string) => void;
 }
 
 const MasterControllerModal = ({
@@ -278,9 +283,12 @@ const MasterControllerModal = ({
   branches,
   suppliers,
   onSave,
+  onDelete,
 }: MasterControllerModalProps) => {
-  const [activeTab, setActiveTab] = useState<'essentials' | 'branches'>('essentials');
+  const [activeTab, setActiveTab] = useState<'essentials' | 'branches' | 'media'>('essentials');
   const [branchUpdates, setBranchUpdates] = useState<Record<string, InventoryUpdate>>({});
+  const [newImage, setNewImage] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
 
   // Initialize formData directly from product props to ensure immediate display
   const [formData, setFormData] = useState(() => {
@@ -315,6 +323,10 @@ const MasterControllerModal = ({
     if (product) {
       // Reset to essentials tab when new product opens
       setActiveTab('essentials');
+
+      // Reset image states
+      setNewImage(null);
+      setImagePreview(null);
 
       // Update form data with current product values
       setFormData({
@@ -402,7 +414,31 @@ const MasterControllerModal = ({
     });
   };
 
-  const handleSave = () => {
+  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setNewImage(file);
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setImagePreview(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleDeleteProduct = async () => {
+    if (!product) return;
+
+    const confirmed = window.confirm(
+      `Are you sure you want to delete "${product.name}"? This action cannot be undone and will remove the product from all branches.`
+    );
+
+    if (confirmed) {
+      onDelete(product.id);
+    }
+  };
+
+  const handleSave = async () => {
     // Build inventory updates array with proper format
     // Include ALL branches to handle visibility and stock changes
     const inventoryUpdates = Object.values(branchUpdates)
@@ -420,8 +456,18 @@ const MasterControllerModal = ({
         }),
       }));
 
-    // Call parent save handler with product data and inventory updates
-    onSave(formData, inventoryUpdates);
+    // If there's a new image, convert it to base64
+    let imageData = null;
+    if (newImage) {
+      imageData = await new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve(reader.result);
+        reader.readAsDataURL(newImage);
+      });
+    }
+
+    // Call parent save handler with product data, inventory updates, and image
+    onSave({ ...formData, imageData }, inventoryUpdates);
   };
 
   if (!isOpen || !product) return null;
@@ -475,7 +521,7 @@ const MasterControllerModal = ({
                   : 'border-transparent text-zinc-500 hover:text-zinc-300'
               }`}
             >
-              General Information
+              System Registry
             </button>
             <button
               onClick={() => setActiveTab('branches')}
@@ -486,6 +532,16 @@ const MasterControllerModal = ({
               }`}
             >
               Pricing Matrix
+            </button>
+            <button
+              onClick={() => setActiveTab('media')}
+              className={`py-4 text-sm font-bold uppercase tracking-wider transition-all border-b-2 ${
+                activeTab === 'media'
+                  ? 'border-indigo-500 text-indigo-500'
+                  : 'border-transparent text-zinc-500 hover:text-zinc-300'
+              }`}
+            >
+              Image & Actions
             </button>
           </div>
         </div>
@@ -674,7 +730,7 @@ const MasterControllerModal = ({
                 </div>
               </div>
             </div>
-          ) : (
+          ) : activeTab === 'branches' ? (
             <div>
               <div className="flex items-center justify-between mb-6">
                 <h3 className="text-lg font-bold text-white">
@@ -816,6 +872,121 @@ const MasterControllerModal = ({
                     })}
                   </tbody>
                 </table>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-8">
+              {/* Product Image Section */}
+              <div>
+                <div className="flex items-center gap-2 mb-6">
+                  <Image className="w-5 h-5 text-purple-400" />
+                  <h3 className="text-lg font-bold text-white">Product Image</h3>
+                </div>
+
+                <div className="flex gap-8 items-start bg-zinc-900/50 border border-zinc-800 rounded-xl p-8">
+                  {/* Current Image Display */}
+                  <div className="flex-shrink-0">
+                    <label className="text-xs font-bold text-zinc-500 uppercase tracking-wider mb-3 block">
+                      Current Image
+                    </label>
+                    <div className="w-48 h-48 bg-zinc-950 border-2 border-zinc-700 rounded-xl overflow-hidden flex items-center justify-center shadow-lg">
+                      {imagePreview ? (
+                        <img
+                          src={imagePreview}
+                          alt="Product preview"
+                          className="w-full h-full object-cover"
+                          onError={(e) => {
+                            console.error('Image preview load error');
+                            e.currentTarget.style.display = 'none';
+                          }}
+                        />
+                      ) : product?.imageUrl ? (
+                        <img
+                          src={product.imageUrl}
+                          alt={product.name}
+                          className="w-full h-full object-cover"
+                          onError={(e) => {
+                            console.error('Product image load error:', product.imageUrl);
+                            e.currentTarget.style.display = 'none';
+                          }}
+                        />
+                      ) : (
+                        <div className="flex flex-col items-center gap-3">
+                          <Package className="w-16 h-16 text-zinc-600" />
+                          <span className="text-xs text-zinc-600">No image uploaded</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Image Upload Section */}
+                  <div className="flex-1 space-y-4">
+                    <div>
+                      <label className="text-xs font-bold text-zinc-500 uppercase tracking-wider mb-3 block">
+                        Upload New Image
+                      </label>
+                      <div className="flex flex-col gap-3">
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={handleImageChange}
+                          className="hidden"
+                          id="product-image-upload"
+                        />
+                        <label
+                          htmlFor="product-image-upload"
+                          className="inline-flex items-center justify-center gap-2 px-6 py-3 bg-purple-600 hover:bg-purple-500 border border-purple-500 rounded-xl text-white cursor-pointer transition-all font-bold shadow-lg shadow-purple-900/20 group"
+                        >
+                          <Upload className="w-5 h-5 group-hover:-translate-y-1 transition-transform" />
+                          {newImage ? 'Change Selected Image' : 'Browse Images'}
+                        </label>
+                        {newImage && (
+                          <div className="flex items-center gap-2 text-emerald-400 bg-emerald-950/50 border border-emerald-800 px-4 py-2 rounded-lg">
+                            <CheckCircle2 className="w-4 h-4" />
+                            <span className="text-sm font-medium">New image: {newImage.name}</span>
+                          </div>
+                        )}
+                      </div>
+                      <p className="text-xs text-zinc-600 mt-3">
+                        Supported formats: JPG, PNG, GIF (Max 5MB)
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Danger Zone - Delete Product */}
+              <div className="h-px bg-red-900/20 w-full" />
+
+              <div className="bg-red-950/20 border-2 border-red-900/50 rounded-xl p-8">
+                <div className="flex items-center gap-2 mb-4">
+                  <AlertTriangle className="w-5 h-5 text-red-400" />
+                  <h3 className="text-lg font-bold text-red-400 uppercase tracking-wider">
+                    Danger Zone
+                  </h3>
+                </div>
+
+                <div className="space-y-4">
+                  <div>
+                    <p className="text-zinc-400 text-sm mb-4">
+                      Deleting this product will permanently remove it from the entire system, including all branch inventories.
+                      This action cannot be undone.
+                    </p>
+                    <div className="flex items-center gap-4">
+                      <button
+                        type="button"
+                        onClick={handleDeleteProduct}
+                        className="inline-flex items-center gap-2 px-6 py-3 bg-red-600 hover:bg-red-500 text-white rounded-xl font-bold transition-all shadow-lg shadow-red-900/30 group"
+                      >
+                        <Trash2 className="w-5 h-5 group-hover:scale-110 transition-transform" />
+                        Delete Product Permanently
+                      </button>
+                      <span className="text-xs text-zinc-600 italic">
+                        Product: <span className="text-red-400 font-bold">{product.name}</span>
+                      </span>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
           )}
@@ -986,6 +1157,40 @@ export default function GlobalInventory() {
 
       // Show error toast
       toast.error('Update failed', {
+        description: errorMessage,
+        duration: 5000,
+      });
+    }
+  };
+
+  const handleDeleteProduct = async (productId: string) => {
+    const loadingToast = toast.loading('Deleting product...', {
+      description: 'Removing product from all branches',
+    });
+
+    try {
+      await axios.delete(`/products/${productId}`);
+
+      toast.dismiss(loadingToast);
+      playNotification('success');
+
+      toast.success('Product deleted successfully!', {
+        description: 'The product has been permanently removed from the system.',
+        duration: 4000,
+      });
+
+      setIsModalOpen(false);
+      setSelectedProduct(null);
+      fetchProducts();
+    } catch (err: any) {
+      console.error('❌ Product deletion failed:', err);
+
+      toast.dismiss(loadingToast);
+      playNotification('error');
+
+      const errorMessage = err.response?.data?.message || err.message || 'Failed to delete product';
+
+      toast.error('Deletion failed', {
         description: errorMessage,
         duration: 5000,
       });
@@ -1343,6 +1548,7 @@ export default function GlobalInventory() {
             branches={branches}
             suppliers={suppliers}
             onSave={handleSaveProduct}
+            onDelete={handleDeleteProduct}
           />
         )}
       </AnimatePresence>
