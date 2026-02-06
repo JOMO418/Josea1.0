@@ -1,0 +1,252 @@
+[
+  {
+    "partNumber": "AF-CR-001",
+    "name": "Air Filter",
+    "imageUrl": "af-cr-001.jpeg"
+  },
+  {
+    "partNumber": "VCG-CR-001",
+    "name": "Valve Cover Gasket",
+    "imageUrl": "vcg-cr-001.webp"
+  },
+  {
+    "partNumber": "OPG-CR-001",
+    "name": "Head  Gasket",
+    "imageUrl": "opg-cr-001.webp"
+  },
+  {
+    "partNumber": "SR-110-001",
+    "name": "Steering Rack",
+    "imageUrl": "sr-110-001.webp"
+  },
+  {
+    "partNumber": "PSP-CR-001",
+    "name": "Power Steering Pump",
+    "imageUrl": "https://images.unsplash.com/photo-1580273916550-e323be2ae537?w=500"
+  },
+  {
+    "partNumber": "GOS-110-001",
+    "name": "Gearbox Oil Seal",
+    "imageUrl": "gos-110-001.jpeg"
+  },
+  {
+    "partNumber": "RB-CR-001",
+    "name": "Release Bearing",
+    "imageUrl": "rb-cr-001.jpeg"
+  },
+  {
+    "partNumber": "CC-5L-001",
+    "name": "Clutch Cover 5L",
+    "imageUrl": "https://images.unsplash.com/photo-1621939514649-280e2ee25f60?w=500"
+  },
+  {
+    "partNumber": "CR-5L-001",
+    "name": "Connecting Rod 5L",
+    "imageUrl": "https://images.unsplash.com/photo-1580273916550-e323be2ae537?w=500"
+  },
+  {
+    "partNumber": "PS-9L-001",
+    "name": "Piston Set 9L",
+    "imageUrl": "https://images.unsplash.com/photo-1486262715619-67b85e0b08d3?w=500"
+  },
+  {
+    "partNumber": "TC-9L-001",
+    "name": "Turbocharger 9L",
+    "imageUrl": "https://images.unsplash.com/photo-1492144534655-ae79c964c9d7?w=500"
+  },
+  {
+    "partNumber": "CAF-CR-001",
+    "name": "Cabin Air Filter",
+    "imageUrl": "https://images.unsplash.com/photo-1619642751034-765dfdf7c58e?w=500"
+  },
+  {
+    "partNumber": "CP-5L-001",
+    "name": "Clutch Plate 5L",
+    "imageUrl": "cp-5l-001.webp"
+  },
+  {
+    "partNumber": "MC-CR-001",
+    "name": "Master Cylinder",
+    "imageUrl": "mc-cr-001.jpeg"
+  },
+  {
+    "partNumber": "CA-110-001",
+    "name": "Control Arm Lower",
+    "imageUrl": "ca-110-001.jpeg"
+  },
+  {
+    "partNumber": "BS-HC-001",
+    "name": "Brake Shoe Set",
+    "imageUrl": "https://images.unsplash.com/photo-1615906655593-ad0386982a0f?w=500"
+  },
+  {
+    "partNumber": "BD-110-F001",
+    "name": "Brake Disc Front",
+    "imageUrl": "https://images.unsplash.com/photo-1619642751034-765dfdf7c58e?w=500"
+  },
+  {
+    "partNumber": "BP-CR-F001",
+    "name": "Brake Pad VBL",
+    "imageUrl": "bp-cr-f001.jpeg"
+  },
+  {
+    "partNumber": "SL-CR-001",
+    "name": "Stabilizer Link",
+    "imageUrl": "sl-cr-001.jpeg"
+  },
+  {
+    "partNumber": "PS-7L-001",
+    "name": "Piston Set 7L",
+    "imageUrl": "ps-7l-001.jpeg"
+  },
+  {
+    "partNumber": "CS-5L-001",
+    "name": "Crankshaft 5L",
+    "imageUrl": "https://images.unsplash.com/photo-1492144534655-ae79c964c9d7?w=500"
+  },
+  {
+    "partNumber": "PS-5L-001",
+    "name": "Piston Set 5L",
+    "imageUrl": "https://images.unsplash.com/photo-1486262715619-67b85e0b08d3?w=500"
+  },
+  {
+    "partNumber": "CHG-5L-001",
+    "name": "Cylinder Head Gasket 5L",
+    "imageUrl": "https://images.unsplash.com/photo-1621939514649-280e2ee25f60?w=500"
+  },
+  {
+    "partNumber": "OP-7L-001",
+    "name": "Oil Pump 7L",
+    "imageUrl": "https://images.unsplash.com/photo-1580273916550-e323be2ae537?w=500"
+  },
+  {
+    "partNumber": "OF-TY-001",
+    "name": "Oil Filter",
+    "imageUrl": "of-ty-001.jpeg"
+  },
+  {
+    "partNumber": "FF-5L-001",
+    "name": "Fuel Filter 5L",
+    "imageUrl": "ff-5l-001.jpeg"
+  },
+  {
+    "partNumber": "CH-7L-001",
+    "name": "Cylinder Head 7L",
+    "imageUrl": "https://images.unsplash.com/photo-1621939514649-280e2ee25f60?w=500"
+  },
+  {
+    "partNumber": "SA-HC-R001",
+    "name": "Shock Absorber Rear",
+    "imageUrl": "sa-hc-r001.webp"
+  },
+  {
+    "partNumber": "BJ-CR-001",
+    "name": "Ball Joint Lower",
+    "imageUrl": "https://images.unsplash.com/photo-1632823469770-e9f735d043b7?w=500"
+  },
+  {
+    "partNumber": "BJ-110-001",
+    "name": "Ball Joint Upper",
+    "imageUrl": "bj-110-001.jpeg"
+  },
+  {
+    "partNumber": "TR-CR-L001",
+    "name": "Tie Rod End Left",
+    "imageUrl": "https://images.unsplash.com/photo-1632823471265-aaa5e3d7f4e8?w=500"
+  },
+  {
+    "partNumber": "TR-CR-R001",
+    "name": "Tie Rod End Right",
+    "imageUrl": "tr-cr-r001.jpeg"
+  },
+  {
+    "partNumber": "BP-CR-R001",
+    "name": "Brake Pad Set Rear",
+    "imageUrl": "https://images.unsplash.com/photo-1615906655593-ad0386982a0f?w=500"
+  },
+  {
+    "partNumber": "PR-7L-001",
+    "name": "Piston Rings 7L",
+    "imageUrl": "https://images.unsplash.com/photo-1625047509168-a7026f36de04?w=500"
+  },
+  {
+    "partNumber": "PR-5L-001",
+    "name": "Piston Rings 5L",
+    "imageUrl": "https://images.unsplash.com/photo-1625047509168-a7026f36de04?w=500"
+  },
+  {
+    "partNumber": "SA-HC-F001",
+    "name": "Shock Absorber Front",
+    "imageUrl": "https://images.unsplash.com/photo-1601362840469-51e4d8d58785?w=500"
+  },
+  {
+    "partNumber": "RE-CR-R001",
+    "name": "Rack End Right",
+    "imageUrl": "re-cr-r001.jpeg"
+  },
+  {
+    "partNumber": "SB-110-001",
+    "name": "Serpentine Belt",
+    "imageUrl": "https://images.unsplash.com/photo-1625047509168-a7026f36de04?w=500"
+  },
+  {
+    "partNumber": "TB-CR-001",
+    "name": "Timing Belt",
+    "imageUrl": "tb-cr-001.jpeg"
+  },
+  {
+    "partNumber": "FB-5L-001",
+    "name": "Fan Belt 5L",
+    "imageUrl": "fb-5l-001.jpeg"
+  },
+  {
+    "partNumber": "TH-TY-001",
+    "name": "Temperature gauge",
+    "imageUrl": "th-ty-001.webp"
+  },
+  {
+    "partNumber": "RH-5L-U001",
+    "name": "Radiator Hose Upper",
+    "imageUrl": "rh-5l-u001.jpeg"
+  },
+  {
+    "partNumber": "RD-CR-001",
+    "name": "Radiator  Fan",
+    "imageUrl": "rd-cr-001.jpeg"
+  },
+  {
+    "partNumber": "WP-5L-001",
+    "name": "Water Pump 5L",
+    "imageUrl": "wp-5l-001.jpeg"
+  },
+  {
+    "partNumber": "SP-CR-001",
+    "name": "Spark Plug Set",
+    "imageUrl": "sp-cr-001.webp"
+  },
+  {
+    "partNumber": "IC-CR-001",
+    "name": "Ignition Coil",
+    "imageUrl": "https://images.unsplash.com/photo-1621939514649-280e2ee25f60?w=500"
+  },
+  {
+    "partNumber": "AL-5L-001",
+    "name": "Alternator Pump 5L",
+    "imageUrl": "al-5l-001.webp"
+  },
+  {
+    "partNumber": "SM-5L-001",
+    "name": "Starter Motor 5L",
+    "imageUrl": "sm-5l-001.jpeg"
+  },
+  {
+    "partNumber": "HGS-5L-001",
+    "name": "Head Gasket Set",
+    "imageUrl": "https://images.unsplash.com/photo-1621939514649-280e2ee25f60?w=500"
+  },
+  {
+    "partNumber": "RE-CR-L001",
+    "name": "Rack End Left",
+    "imageUrl": "https://images.unsplash.com/photo-1632823471265-aaa5e3d7f4e8?w=500"
+  }
+]

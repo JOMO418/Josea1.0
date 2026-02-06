@@ -256,6 +256,8 @@ exports.createProduct = async (req, res, next) => {
   }
 };
 
+const { uploadImage, deleteImage } = require('../config/cloudinary');
+
 exports.updateProduct = async (req, res, next) => {
   try {
     const { inventoryUpdates, supplierId, buyingPrice, imageData, ...productData } = req.body;
@@ -285,10 +287,39 @@ exports.updateProduct = async (req, res, next) => {
       });
     }
 
-    // Handle image data (base64 string from frontend)
+    // ✨ NEW: Handle Cloudinary image upload
     if (imageData) {
-      // Store base64 image data as imageUrl
-      productData.imageUrl = imageData;
+      try {
+        console.log('📸 Uploading image to Cloudinary...');
+        
+        // Delete old image from Cloudinary if it exists
+        if (oldProduct.imageUrl && oldProduct.imageUrl.includes('cloudinary.com')) {
+          console.log('🗑️ Deleting old image from Cloudinary...');
+          await deleteImage(oldProduct.imageUrl);
+        }
+
+        // Generate custom filename from part number or product name
+        const customFilename = (productData.partNumber || oldProduct.partNumber || productData.name || oldProduct.name)
+          .replace(/[^a-z0-9]/gi, '-')
+          .toLowerCase()
+          .substring(0, 50);
+
+        // Upload new image to Cloudinary
+        const cloudinaryUrl = await uploadImage(
+          imageData,
+          'products', // folder name
+          customFilename // custom filename
+        );
+
+        // Update productData with Cloudinary URL
+        productData.imageUrl = cloudinaryUrl;
+        
+        console.log('✅ Image uploaded to Cloudinary:', cloudinaryUrl);
+      } catch (uploadError) {
+        console.error('❌ Cloudinary upload failed:', uploadError);
+        // Don't fail the entire request, just log the error
+        // The product will update without the image
+      }
     }
 
     // Use transaction for atomic updates with audit trail
@@ -299,24 +330,15 @@ exports.updateProduct = async (req, res, next) => {
         data: productData,
       });
 
-      console.log('✅ Product updated:', product.id);
-
-      // STEP 2: Handle inventory updates with audit trail
+      // STEP 2: Handle inventory updates (branch-specific quantities and visibility)
       if (inventoryUpdates && Array.isArray(inventoryUpdates)) {
-        console.log(`📊 Processing ${inventoryUpdates.length} inventory updates`);
+        console.log('📊 Processing inventory updates:', inventoryUpdates.length);
 
         for (const update of inventoryUpdates) {
-          const { branchId, quantity, sellingPrice, lowStockThreshold, isActive } = update;
+          const { branchId, quantityChange, isActive, sellingPrice, lowStockThreshold } = update;
 
-          if (!branchId) {
-            console.warn('⚠️ Skipping update with no branchId');
-            continue; // Skip invalid updates
-          }
-
-          console.log(`🔄 Processing branch ${branchId}:`, update);
-
-          // Fetch current inventory record for this branch
-          const currentInventory = await tx.inventory.findUnique({
+          // Find existing inventory record
+          const existingInventory = await tx.inventory.findUnique({
             where: {
               productId_branchId: {
                 productId: req.params.id,
@@ -325,207 +347,124 @@ exports.updateProduct = async (req, res, next) => {
             },
           });
 
-          console.log('📋 Current inventory:', currentInventory);
+          if (existingInventory) {
+            // Calculate new quantity
+            const currentQty = existingInventory.quantity || 0;
+            const changeAmount = quantityChange || 0;
+            const newQuantity = Math.max(0, currentQty + changeAmount);
 
-          // Build update data object
-          const updateData = {};
-
-          // Handle visibility toggle
-          if (isActive !== undefined) {
-            updateData.isActive = Boolean(isActive);
-          }
-
-          // Handle quantity update with audit trail
-          if (quantity !== undefined) {
-            const newQuantity = Number(quantity);
-            const currentQuantity = currentInventory?.quantity || 0;
-            const diff = newQuantity - currentQuantity;
-
-            console.log(`📦 Stock change: ${currentQuantity} → ${newQuantity} (diff: ${diff})`);
-
-            // Update quantity
-            updateData.quantity = newQuantity;
-
-            // Create StockMovement audit record if quantity changed
-            if (diff !== 0 && currentInventory) {
-              console.log('📝 Creating stock movement record');
-              try {
-                await tx.stockMovement.create({
-                  data: {
-                    productId: req.params.id,
-                    inventoryId: currentInventory.id,
-                    branchId: branchId,
-                    userId: req.user.id,
-                    type: 'ADJUSTMENT',
-                    quantity: diff,
-                    notes: 'Manual adjustment via System Registry',
-                  },
-                });
-                console.log('✅ Stock movement created');
-              } catch (stockMoveError) {
-                console.error('❌ Stock movement creation failed:', stockMoveError);
-                throw stockMoveError;
-              }
-            }
-
-            // Update lastRestockAt if quantity increased
-            if (diff > 0) {
-              updateData.lastRestockAt = new Date();
-            }
-          }
-
-          // Handle pricing updates
-          if (sellingPrice !== undefined && sellingPrice !== null && sellingPrice !== '') {
-            updateData.sellingPrice = Number(sellingPrice);
-          }
-          if (lowStockThreshold !== undefined && lowStockThreshold !== null && lowStockThreshold !== '') {
-            updateData.lowStockThreshold = Number(lowStockThreshold);
-          }
-
-          console.log('💾 Update data:', updateData);
-
-          // Build create data object (for new inventory records)
-          const createData = {
-            productId: req.params.id,
-            branchId: branchId,
-            quantity: quantity !== undefined ? Number(quantity) : 0,
-            isActive: isActive !== undefined ? Boolean(isActive) : true,
-            sellingPrice: sellingPrice !== undefined && sellingPrice !== null && sellingPrice !== '' ? Number(sellingPrice) : null,
-            lowStockThreshold: lowStockThreshold !== undefined && lowStockThreshold !== null && lowStockThreshold !== '' ? Number(lowStockThreshold) : null,
-            lastRestockAt: quantity !== undefined && Number(quantity) > 0 ? new Date() : null,
-          };
-
-          console.log('🆕 Create data (if new):', createData);
-
-          // Update or create inventory record for this branch
-          const updatedInventory = await tx.inventory.upsert({
-            where: {
-              productId_branchId: {
-                productId: req.params.id,
-                branchId: branchId,
+            // Update existing inventory
+            await tx.inventory.update({
+              where: {
+                productId_branchId: {
+                  productId: req.params.id,
+                  branchId: branchId,
+                },
               },
-            },
-            update: updateData,
-            create: createData,
-          });
+              data: {
+                quantity: newQuantity,
+                isActive: isActive !== undefined ? isActive : existingInventory.isActive,
+                sellingPrice: sellingPrice !== undefined ? sellingPrice : existingInventory.sellingPrice,
+                lowStockThreshold: lowStockThreshold !== undefined ? lowStockThreshold : existingInventory.lowStockThreshold,
+                lastRestockAt: changeAmount > 0 ? new Date() : existingInventory.lastRestockAt,
+              },
+            });
 
-          console.log('✅ Inventory upserted:', updatedInventory.id);
-
-          // Create initial stock movement for new inventory records
-          if (!currentInventory && quantity !== undefined && Number(quantity) > 0) {
-            console.log('📝 Creating initial stock movement for new inventory');
-            try {
+            // Create stock movement record if quantity changed
+            if (changeAmount !== 0) {
               await tx.stockMovement.create({
                 data: {
                   productId: req.params.id,
-                  inventoryId: updatedInventory.id,
                   branchId: branchId,
-                  userId: req.user.id,
-                  type: 'INITIAL_ADD',
-                  quantity: Number(quantity),
-                  notes: 'Initial stock via System Registry',
+                  quantity: changeAmount,
+                  type: changeAmount > 0 ? 'IN' : 'OUT',
+                  reason: changeAmount > 0 ? 'RESTOCK' : 'ADJUSTMENT',
+                  userId: req.user?.id,
                 },
               });
-              console.log('✅ Initial stock movement created');
-            } catch (stockMoveError) {
-              console.error('❌ Initial stock movement creation failed:', stockMoveError);
-              throw stockMoveError;
             }
+          } else {
+            // Create new inventory record for this branch
+            await tx.inventory.create({
+              data: {
+                productId: req.params.id,
+                branchId: branchId,
+                quantity: Math.max(0, quantityChange || 0),
+                isActive: isActive !== undefined ? isActive : true,
+                sellingPrice: sellingPrice,
+                lowStockThreshold: lowStockThreshold,
+              },
+            });
           }
         }
       }
 
-      // STEP 3: Handle SupplierProduct upsert if supplier info is provided
-      if (supplierId && buyingPrice !== undefined && buyingPrice !== null) {
-        console.log(`🚚 Processing SupplierProduct: supplierId=${supplierId}, buyingPrice=${buyingPrice}`);
+      // STEP 3: Handle supplier product relationship
+      if (supplierId && buyingPrice) {
+        console.log('🔗 Updating supplier relationship...');
 
-        // Validate supplierId exists
-        const supplierExists = await tx.supplier.findUnique({
-          where: { id: supplierId },
+        const existingSupplierProduct = await tx.supplierProduct.findUnique({
+          where: {
+            supplierId_productId: {
+              supplierId: supplierId,
+              productId: req.params.id,
+            },
+          },
         });
 
-        if (supplierExists) {
-          // Upsert SupplierProduct record
-          await tx.supplierProduct.upsert({
+        if (existingSupplierProduct) {
+          await tx.supplierProduct.update({
             where: {
               supplierId_productId: {
                 supplierId: supplierId,
                 productId: req.params.id,
               },
             },
-            update: {
-              wholesalePrice: Number(buyingPrice),
-              isAvailable: true,
+            data: {
+              wholesalePrice: buyingPrice,
               lastUpdated: new Date(),
-              notes: 'Updated from Global Inventory',
-            },
-            create: {
-              supplierId: supplierId,
-              productId: req.params.id,
-              wholesalePrice: Number(buyingPrice),
-              currency: 'KES',
-              isAvailable: true,
-              notes: 'Auto-linked from Global Inventory',
             },
           });
-          console.log(`✅ SupplierProduct upserted for product ${req.params.id}`);
         } else {
-          console.warn(`⚠️ Supplier ${supplierId} not found, skipping SupplierProduct update`);
+          await tx.supplierProduct.create({
+            data: {
+              supplierId: supplierId,
+              productId: req.params.id,
+              wholesalePrice: buyingPrice,
+            },
+          });
         }
       }
 
-      // Fetch updated product with inventory and supplier products
-      return await tx.product.findUnique({
-        where: { id: req.params.id },
-        include: {
-          inventory: {
-            include: {
-              branch: true,
-            },
-          },
-          supplierProducts: {
-            include: {
-              supplier: true,
-            },
+      // STEP 4: Create audit log
+      await tx.auditLog.create({
+        data: {
+          userId: req.user?.id,
+          action: 'UPDATE_PRODUCT',
+          entityType: 'Product',
+          entityId: req.params.id,
+          changes: {
+            before: oldProduct,
+            after: product,
           },
         },
       });
+
+      return product;
     });
 
-    console.log('✅ Transaction completed successfully');
-
-    // Create audit log (outside transaction for performance)
-    await prisma.auditLog.create({
-      data: {
-        userId: req.user.id,
-        action: 'PRODUCT_UPDATED',
-        entityType: 'Product',
-        entityId: result.id,
-        oldValue: oldProduct,
-        newValue: result,
-        ipAddress: req.ipAddress,
-      },
-    });
-
-    // Clear cache
-    await cache.delPattern('products:*');
+    console.log('✅ Product updated successfully:', result.id);
 
     res.json({
       success: true,
-      data: result,
+      message: 'Product updated successfully',
+      product: result,
     });
   } catch (error) {
-    console.error('❌ Product update error:', error);
-    console.error('Error stack:', error.stack);
-
-    res.status(500).json({
-      success: false,
-      message: error.message || 'Failed to update product',
-      error: process.env.NODE_ENV === 'development' ? error.stack : undefined,
-    });
+    console.error('❌ Product update failed:', error);
+    next(error);
   }
 };
-
 exports.deleteProduct = async (req, res, next) => {
   try {
     const product = await prisma.product.update({
