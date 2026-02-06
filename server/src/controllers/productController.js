@@ -437,19 +437,17 @@ exports.updateProduct = async (req, res, next) => {
       }
 
       // STEP 4: Create audit log
-      await tx.auditLog.create({
-        data: {
-          userId: req.user?.id,
-          action: 'UPDATE_PRODUCT',
-          entityType: 'Product',
-          entityId: req.params.id,
-          changes: {
-            before: oldProduct,
-            after: product,
-          },
-        },
-      });
-
+   // STEP 4: Create audit log
+await tx.auditLog.create({
+  data: {
+    userId: req.user?.id,
+    action: 'UPDATE_PRODUCT',
+    entityType: 'Product',
+    entityId: req.params.id,
+    oldValue: oldProduct,    // CHANGED
+    newValue: product,        // CHANGED
+  },
+});
       return product;
     });
 
