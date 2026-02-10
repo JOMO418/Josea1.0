@@ -720,7 +720,7 @@ export default function CheckoutModal({ isOpen, onClose, onSuccess }: CheckoutMo
               className="relative w-full max-w-4xl bg-[#09090b] border border-zinc-800 rounded-[2rem] shadow-2xl overflow-hidden flex flex-col max-h-[90vh]"
             >
             {successData ? (
-              <div className="receipt-container flex flex-col h-full">
+              <div className="receipt-container flex flex-col h-full min-h-0">
                 {/* Scrollable Content Area */}
                 <div className="flex-1 overflow-y-auto p-8 flex flex-col items-center text-center">
                   {/* FLAGGED SALE - Waiting for M-Pesa Confirmation */}
@@ -836,9 +836,9 @@ export default function CheckoutModal({ isOpen, onClose, onSuccess }: CheckoutMo
                   )}
                 </div>
 
-                {/* Fixed Bottom Section - Always Visible */}
-                <div className="flex-shrink-0 p-6 bg-zinc-900/80 border-t border-zinc-800">
-                  {/* Action Buttons */}
+                {/* Fixed Bottom Section - Always Visible - CRITICAL FOR ALL SALES */}
+                <div className="flex-shrink-0 p-6 bg-zinc-900/80 border-t border-zinc-800 w-full">
+                  {/* Action Buttons - ALWAYS RENDER */}
                   {successData.isFlagged ? (
                     /* Flagged Sale Buttons - Two buttons side by side */
                     <div className="grid grid-cols-2 gap-4 w-full max-w-lg mx-auto mb-4 no-print">
@@ -859,13 +859,13 @@ export default function CheckoutModal({ isOpen, onClose, onSuccess }: CheckoutMo
                       </button>
                     </div>
                   ) : (
-                    /* Normal Sale Buttons */
+                    /* Normal Sale Buttons (Including Credit Sales) */
                     <div className="grid grid-cols-2 gap-4 w-full max-w-lg mx-auto mb-4 no-print">
                       <button
                         onClick={() => window.print()}
                         className="flex items-center justify-center gap-3 py-4 bg-white text-black font-black rounded-2xl hover:bg-zinc-200 transition-all uppercase italic"
                       >
-                        <Printer size={20} /> PRINT
+                        <Printer size={20} /> PRINT RECEIPT
                       </button>
                       <button
                         onClick={handleNewSale}
