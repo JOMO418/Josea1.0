@@ -1191,7 +1191,7 @@ exports.toggleUserStatus = async (req, res, next) => {
     if (req.user.id === id && !isActive) {
       return res.status(400).json({
         success: false,
-        error: 'Cannot suspend your own account',
+        error: 'You cannot suspend your own account',
       });
     }
 
@@ -1243,7 +1243,7 @@ exports.createUser = async (req, res, next) => {
     if (existingUser) {
       return res.status(400).json({
         success: false,
-        error: 'A user with this email already exists',
+        error: 'This email address is already registered',
       });
     }
 
@@ -1366,7 +1366,7 @@ exports.updateUserPassword = async (req, res, next) => {
     if (!currentPassword) {
       return res.status(400).json({
         success: false,
-        error: 'Please enter your current password for verification',
+        error: 'Please enter your current password to continue',
       });
     }
 
@@ -1379,7 +1379,7 @@ exports.updateUserPassword = async (req, res, next) => {
     if (!adminUser) {
       return res.status(401).json({
         success: false,
-        error: 'Authentication error',
+        error: 'Your session has expired. Please login again',
       });
     }
 
@@ -1388,14 +1388,14 @@ exports.updateUserPassword = async (req, res, next) => {
     if (!isPasswordValid) {
       return res.status(401).json({
         success: false,
-        error: 'Incorrect password. Please verify your credentials.',
+        error: 'The password you entered is incorrect',
       });
     }
 
     if (!newPassword || newPassword.length < 6) {
       return res.status(400).json({
         success: false,
-        error: 'Password must be at least 6 characters',
+        error: 'Please enter a password with at least 6 characters',
       });
     }
 
@@ -1458,7 +1458,7 @@ exports.getUserDetails = async (req, res, next) => {
     if (!user) {
       return res.status(404).json({
         success: false,
-        error: 'User not found',
+        error: 'This user account could not be found',
       });
     }
 
@@ -1504,7 +1504,7 @@ exports.updateUser = async (req, res, next) => {
       if (existingUser) {
         return res.status(400).json({
           success: false,
-          error: 'Email is already in use by another user',
+          error: 'This email address is already in use',
         });
       }
     }

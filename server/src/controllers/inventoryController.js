@@ -50,7 +50,7 @@ exports.adjustStock = async (req, res, next) => {
       });
 
       if (!oldInventory) {
-        throw new Error('Inventory record not found');
+        throw new Error('Unable to find this inventory item. Please refresh and try again');
       }
 
       const inventory = await tx.inventory.update({
@@ -168,8 +168,8 @@ exports.adjustStock = async (req, res, next) => {
     res.json(result);
   } catch (error) {
     if (error.code === 'P2034') {
-      return res.status(409).json({ 
-        message: 'Inventory was modified by another process. Please retry.',
+      return res.status(409).json({
+        message: 'This inventory was just updated by someone else. Please refresh and try again',
       });
     }
     next(error);

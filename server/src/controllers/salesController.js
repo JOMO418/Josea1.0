@@ -112,11 +112,11 @@ exports.createSale = async (req, res) => {
         });
 
         if (!product) {
-          throw new Error(`Product not found: ${item.productId}`);
+          throw new Error(`Product not found. Please refresh and try again`);
         }
 
         if (!product.isActive) {
-          throw new Error(`Product ${product.name} is inactive`);
+          throw new Error(`${product.name} is currently unavailable for sale`);
         }
 
         // ===== MINIMUM PRICE ENFORCEMENT =====
@@ -142,7 +142,7 @@ exports.createSale = async (req, res) => {
         });
 
         if (!inventory) {
-          throw new Error(`Inventory not found for ${product.name} at this branch`);
+          throw new Error(`${product.name} is not available at this branch`);
         }
 
         if (inventory.quantity < item.quantity) {
@@ -383,8 +383,7 @@ exports.createSale = async (req, res) => {
   } catch (error) {
     console.error('Create sale error:', error);
     res.status(400).json({
-      message: error.message || 'Failed to create sale',
-      error: process.env.NODE_ENV === 'development' ? error.stack : undefined,
+      message: error.message || 'Unable to complete sale. Please try again',
     });
   }
 };
@@ -508,7 +507,7 @@ exports.getAllSales = async (req, res) => {
     });
   } catch (error) {
     console.error('Get sales error:', error);
-    res.status(500).json({ message: 'Failed to fetch sales' });
+    res.status(500).json({ message: 'Unable to load sales. Please refresh the page' });
   }
 };
 
@@ -553,7 +552,7 @@ exports.getSaleById = async (req, res) => {
     res.json(sale);
   } catch (error) {
     console.error('Get sale error:', error);
-    res.status(500).json({ message: 'Failed to fetch sale' });
+    res.status(500).json({ message: 'Unable to load sale details. Please try again' });
   }
 };
 
@@ -659,7 +658,7 @@ exports.requestReversal = async (req, res) => {
     });
   } catch (error) {
     console.error('Request reversal error:', error);
-    res.status(500).json({ message: 'Failed to request reversal' });
+    res.status(500).json({ message: 'Unable to submit reversal request. Please try again' });
   }
 };
 
@@ -805,9 +804,8 @@ exports.recordCreditPayment = async (req, res) => {
   } catch (error) {
     // 5. Error Handling (Prevents 500 Crash)
     console.error('❌ Payment Logic Error:', error);
-    res.status(400).json({ 
-      message: error.message || 'Payment processing failed',
-      details: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    res.status(400).json({
+      message: error.message || 'Unable to process payment. Please try again',
     });
   }
 };
@@ -1022,8 +1020,7 @@ exports.processReversal = async (req, res) => {
   } catch (error) {
     console.error('Process reversal error:', error);
     res.status(400).json({
-      message: error.message || 'Failed to process reversal',
-      error: process.env.NODE_ENV === 'development' ? error.stack : undefined,
+      message: error.message || 'Unable to process reversal. Please try again',
     });
   }
 };
@@ -1065,7 +1062,7 @@ exports.searchCustomers = async (req, res) => {
     res.json(customers);
   } catch (error) {
     console.error('Search customers error:', error);
-    res.status(500).json({ message: 'Failed to search customers' });
+    res.status(500).json({ message: 'Unable to search customers. Please try again' });
   }
 };
 
@@ -1274,8 +1271,7 @@ exports.getSalesKPIs = async (req, res) => {
   } catch (error) {
     console.error('Get KPIs error:', error);
     res.status(500).json({
-      message: 'Failed to fetch KPI statistics',
-      error: process.env.NODE_ENV === 'development' ? error.stack : undefined,
+      message: 'Unable to load statistics. Please refresh the page',
     });
   }
 };

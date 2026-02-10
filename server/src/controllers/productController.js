@@ -73,7 +73,7 @@ exports.getProduct = async (req, res, next) => {
     });
 
     if (!product) {
-      return res.status(404).json({ message: 'Product not found' });
+      return res.status(404).json({ message: 'This product is currently unavailable' });
     }
 
     res.json(product);
@@ -140,7 +140,7 @@ exports.createProduct = async (req, res, next) => {
             });
 
             if (!branchExists) {
-              throw new Error(`Branch with ID ${dist.branchId} not found`);
+              throw new Error('Unable to find the selected branch. Please verify your selection');
             }
 
             // Create inventory record with branch-specific values
@@ -283,7 +283,7 @@ exports.updateProduct = async (req, res, next) => {
     if (!oldProduct) {
       return res.status(404).json({
         success: false,
-        message: 'Product not found'
+        message: 'This product is currently unavailable'
       });
     }
 
@@ -603,8 +603,7 @@ exports.getGlobalProducts = async (req, res, next) => {
   } catch (error) {
     console.error('❌ Global products fetch error:', error);
     res.status(500).json({
-      message: 'Failed to fetch global inventory',
-      error: error.message,
+      message: 'Unable to load inventory. Please refresh the page',
     });
   }
 };

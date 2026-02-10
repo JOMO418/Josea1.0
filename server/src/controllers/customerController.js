@@ -131,7 +131,7 @@ exports.getCustomerStats = async (req, res) => {
     });
   } catch (error) {
     console.error('Get customer stats error:', error);
-    res.status(500).json({ message: 'Failed to fetch customer statistics' });
+    res.status(500).json({ message: 'Unable to load customer statistics. Please refresh the page' });
   }
 };
 
@@ -267,7 +267,7 @@ exports.getCustomers = async (req, res) => {
     });
   } catch (error) {
     console.error('Get customers error:', error);
-    res.status(500).json({ message: 'Failed to fetch customers' });
+    res.status(500).json({ message: 'Unable to load customers. Please refresh the page' });
   }
 };
 
@@ -310,7 +310,7 @@ exports.getCustomerDetails = async (req, res) => {
     });
 
     if (!customer) {
-      return res.status(404).json({ message: 'Customer not found' });
+      return res.status(404).json({ message: 'This customer profile could not be found' });
     }
 
     // Calculate Credit Score: Total Spent / (Total Debt + 1)
@@ -398,7 +398,7 @@ exports.getCustomerDetails = async (req, res) => {
     });
   } catch (error) {
     console.error('Get customer details error:', error);
-    res.status(500).json({ message: 'Failed to fetch customer details' });
+    res.status(500).json({ message: 'Unable to load customer details. Please refresh the page' });
   }
 };
 
@@ -412,11 +412,11 @@ exports.updateCustomer = async (req, res) => {
 
   // Validation
   if (!name || name.trim().length === 0) {
-    return res.status(400).json({ message: 'Customer name is required' });
+    return res.status(400).json({ message: 'Please enter the customer name' });
   }
 
   if (!phone || phone.trim().length === 0) {
-    return res.status(400).json({ message: 'Phone number is required' });
+    return res.status(400).json({ message: 'Please enter a phone number' });
   }
 
   try {
@@ -427,7 +427,7 @@ exports.updateCustomer = async (req, res) => {
 
     if (existingCustomer && existingCustomer.id !== id) {
       return res.status(400).json({
-        message: 'Phone number already registered to another customer',
+        message: 'This phone number is already registered to another customer',
       });
     }
 
@@ -453,7 +453,7 @@ exports.updateCustomer = async (req, res) => {
     res.json(updatedCustomer);
   } catch (error) {
     console.error('Update customer error:', error);
-    res.status(500).json({ message: 'Failed to update customer' });
+    res.status(500).json({ message: 'Unable to update customer. Please try again' });
   }
 };
 

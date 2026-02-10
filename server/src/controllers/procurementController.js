@@ -279,7 +279,7 @@ exports.getSuppliers = async (req, res) => {
     res.json(suppliers.map(formatSupplier));
   } catch (error) {
     console.error('Get suppliers error:', error);
-    res.status(500).json({ message: 'Failed to fetch suppliers' });
+    res.status(500).json({ message: 'Unable to load suppliers. Please refresh the page' });
   }
 };
 
@@ -298,13 +298,13 @@ exports.getSupplierById = async (req, res) => {
     });
 
     if (!supplier) {
-      return res.status(404).json({ message: 'Supplier not found' });
+      return res.status(404).json({ message: 'This supplier could not be found' });
     }
 
     res.json(formatSupplier(supplier));
   } catch (error) {
     console.error('Get supplier error:', error);
-    res.status(500).json({ message: 'Failed to fetch supplier' });
+    res.status(500).json({ message: 'Unable to load supplier details. Please refresh the page' });
   }
 };
 
@@ -331,7 +331,7 @@ exports.createSupplier = async (req, res) => {
     res.status(201).json(formatSupplier(supplier));
   } catch (error) {
     console.error('Create supplier error:', error);
-    res.status(500).json({ message: 'Failed to create supplier' });
+    res.status(500).json({ message: 'Unable to create supplier. Please check your information and try again' });
   }
 };
 
@@ -361,7 +361,7 @@ exports.updateSupplier = async (req, res) => {
     res.json(formatSupplier(supplier));
   } catch (error) {
     console.error('Update supplier error:', error);
-    res.status(500).json({ message: 'Failed to update supplier' });
+    res.status(500).json({ message: 'Unable to update supplier. Please try again' });
   }
 };
 
@@ -378,7 +378,7 @@ exports.deleteSupplier = async (req, res) => {
     res.json({ success: true });
   } catch (error) {
     console.error('Delete supplier error:', error);
-    res.status(500).json({ message: 'Failed to delete supplier' });
+    res.status(500).json({ message: 'Unable to delete supplier. Please try again' });
   }
 };
 
@@ -406,7 +406,7 @@ exports.getSupplierProducts = async (req, res) => {
     res.json(supplierProducts.map(formatSupplierProduct));
   } catch (error) {
     console.error('Get supplier products error:', error);
-    res.status(500).json({ message: 'Failed to fetch supplier products' });
+    res.status(500).json({ message: 'Unable to load supplier products. Please refresh the page' });
   }
 };
 
@@ -435,7 +435,7 @@ exports.createSupplierProduct = async (req, res) => {
     if (error.code === 'P2002') {
       return res.status(400).json({ message: 'This product is already linked to this supplier' });
     }
-    res.status(500).json({ message: 'Failed to create supplier product' });
+    res.status(500).json({ message: 'Unable to add product. Please check your information and try again' });
   }
 };
 
@@ -462,7 +462,7 @@ exports.updateSupplierProduct = async (req, res) => {
     res.json(formatSupplierProduct(supplierProduct));
   } catch (error) {
     console.error('Update supplier product error:', error);
-    res.status(500).json({ message: 'Failed to update supplier product' });
+    res.status(500).json({ message: 'Unable to update product. Please try again' });
   }
 };
 
@@ -475,7 +475,7 @@ exports.deleteSupplierProduct = async (req, res) => {
     res.json({ success: true });
   } catch (error) {
     console.error('Delete supplier product error:', error);
-    res.status(500).json({ message: 'Failed to delete supplier product' });
+    res.status(500).json({ message: 'Unable to remove product. Please try again' });
   }
 };
 
@@ -533,7 +533,7 @@ exports.searchProductsWithPrices = async (req, res) => {
     res.json(results);
   } catch (error) {
     console.error('Search products error:', error);
-    res.status(500).json({ message: 'Failed to search products' });
+    res.status(500).json({ message: 'Unable to search products. Please try again' });
   }
 };
 
@@ -593,7 +593,7 @@ exports.getProcurementOrders = async (req, res) => {
     res.json(orders.map(formatOrder));
   } catch (error) {
     console.error('Get procurement orders error:', error);
-    res.status(500).json({ message: 'Failed to fetch procurement orders' });
+    res.status(500).json({ message: 'Unable to load procurement orders. Please refresh the page' });
   }
 };
 
@@ -622,13 +622,13 @@ exports.getProcurementOrderById = async (req, res) => {
     });
 
     if (!order) {
-      return res.status(404).json({ message: 'Order not found' });
+      return res.status(404).json({ message: 'This order could not be found' });
     }
 
     res.json(formatOrder(order));
   } catch (error) {
     console.error('Get procurement order error:', error);
-    res.status(500).json({ message: 'Failed to fetch procurement order' });
+    res.status(500).json({ message: 'Unable to load order details. Please refresh the page' });
   }
 };
 
@@ -638,11 +638,11 @@ exports.createProcurementOrder = async (req, res) => {
     const userId = req.user?.id;
 
     if (!userId) {
-      return res.status(401).json({ message: 'User not authenticated' });
+      return res.status(401).json({ message: 'Your session has expired. Please login again' });
     }
 
     if (!items || items.length === 0) {
-      return res.status(400).json({ message: 'Order must have at least one item' });
+      return res.status(400).json({ message: 'Please add at least one item to the order' });
     }
 
     const orderNumber = await generateOrderNumber();
@@ -714,7 +714,7 @@ exports.createProcurementOrder = async (req, res) => {
     res.status(201).json(formatOrder(order));
   } catch (error) {
     console.error('Create procurement order error:', error);
-    res.status(500).json({ message: 'Failed to create procurement order' });
+    res.status(500).json({ message: 'Unable to create order. Please check your information and try again' });
   }
 };
 
@@ -815,7 +815,7 @@ exports.updateProcurementOrder = async (req, res) => {
     res.json(formatOrder(order));
   } catch (error) {
     console.error('Update procurement order error:', error);
-    res.status(500).json({ message: 'Failed to update procurement order' });
+    res.status(500).json({ message: 'Unable to update order. Please try again' });
   }
 };
 
@@ -828,7 +828,7 @@ exports.deleteProcurementOrder = async (req, res) => {
     res.json({ success: true });
   } catch (error) {
     console.error('Delete procurement order error:', error);
-    res.status(500).json({ message: 'Failed to delete procurement order' });
+    res.status(500).json({ message: 'Unable to delete order. Please try again' });
   }
 };
 
@@ -858,7 +858,7 @@ exports.updateOrderStatus = async (req, res) => {
     res.json(formatOrder(order));
   } catch (error) {
     console.error('Update order status error:', error);
-    res.status(500).json({ message: 'Failed to update order status' });
+    res.status(500).json({ message: 'Unable to update order status. Please try again' });
   }
 };
 
@@ -887,7 +887,7 @@ exports.updatePaymentStatus = async (req, res) => {
     res.json(formatOrder(order));
   } catch (error) {
     console.error('Update payment status error:', error);
-    res.status(500).json({ message: 'Failed to update payment status' });
+    res.status(500).json({ message: 'Unable to update payment status. Please try again' });
   }
 };
 
@@ -915,7 +915,7 @@ exports.markItemReceived = async (req, res) => {
     res.json(formatOrder(order));
   } catch (error) {
     console.error('Mark item received error:', error);
-    res.status(500).json({ message: 'Failed to update item' });
+    res.status(500).json({ message: 'Unable to update item status. Please try again' });
   }
 };
 
@@ -939,7 +939,7 @@ exports.getWorkers = async (req, res) => {
     res.json(workers);
   } catch (error) {
     console.error('Get workers error:', error);
-    res.status(500).json({ message: 'Failed to fetch workers' });
+    res.status(500).json({ message: 'Unable to load workers. Please refresh the page' });
   }
 };
 
@@ -973,7 +973,7 @@ exports.getStats = async (req, res) => {
     });
   } catch (error) {
     console.error('Get stats error:', error);
-    res.status(500).json({ message: 'Failed to fetch stats' });
+    res.status(500).json({ message: 'Unable to load statistics. Please refresh the page' });
   }
 };
 
@@ -1002,7 +1002,7 @@ exports.getRecentActivity = async (req, res) => {
     res.json(activities);
   } catch (error) {
     console.error('Get recent activity error:', error);
-    res.status(500).json({ message: 'Failed to fetch activity' });
+    res.status(500).json({ message: 'Unable to load recent activity. Please refresh the page' });
   }
 };
 
@@ -1045,7 +1045,7 @@ exports.getSupplierCatalog = async (req, res) => {
     res.json(results.map(formatSupplierProduct));
   } catch (error) {
     console.error('Get supplier catalog error:', error);
-    res.status(500).json({ message: 'Failed to fetch supplier catalog' });
+    res.status(500).json({ message: 'Unable to load supplier catalog. Please refresh the page' });
   }
 };
 
@@ -1076,7 +1076,7 @@ exports.addProductToSupplier = async (req, res) => {
     if (error.code === 'P2002') {
       return res.status(400).json({ message: 'This product is already in this supplier catalog' });
     }
-    res.status(500).json({ message: 'Failed to add product to supplier' });
+    res.status(500).json({ message: 'Unable to add product to supplier. Please try again' });
   }
 };
 
@@ -1107,7 +1107,7 @@ exports.getProductSuppliers = async (req, res) => {
     res.json(results);
   } catch (error) {
     console.error('Get product suppliers error:', error);
-    res.status(500).json({ message: 'Failed to fetch product suppliers' });
+    res.status(500).json({ message: 'Unable to load product suppliers. Please refresh the page' });
   }
 };
 
@@ -1215,7 +1215,7 @@ exports.updateOrderItem = async (req, res) => {
     res.json(formatOrder(order));
   } catch (error) {
     console.error('Update order item error:', error);
-    res.status(500).json({ message: 'Failed to update order item' });
+    res.status(500).json({ message: 'Unable to update order item. Please try again' });
   }
 };
 
@@ -1248,7 +1248,7 @@ exports.getSupplierPayments = async (req, res) => {
     res.json(payments.map(formatSupplierPayment));
   } catch (error) {
     console.error('Get supplier payments error:', error);
-    res.status(500).json({ message: 'Failed to fetch supplier payments' });
+    res.status(500).json({ message: 'Unable to load supplier payments. Please refresh the page' });
   }
 };
 
@@ -1318,7 +1318,7 @@ exports.updateSupplierPayment = async (req, res) => {
     res.json(formatSupplierPayment(payment));
   } catch (error) {
     console.error('Update supplier payment error:', error);
-    res.status(500).json({ message: 'Failed to update supplier payment' });
+    res.status(500).json({ message: 'Unable to update payment. Please try again' });
   }
 };
 
@@ -1380,7 +1380,7 @@ exports.getPendingPayments = async (req, res) => {
     });
   } catch (error) {
     console.error('Get pending payments error:', error);
-    res.status(500).json({ message: 'Failed to fetch pending payments' });
+    res.status(500).json({ message: 'Unable to load pending payments. Please refresh the page' });
   }
 };
 
@@ -1426,6 +1426,6 @@ exports.getSuppliersByLocation = async (req, res) => {
     res.json(tree);
   } catch (error) {
     console.error('Get suppliers by location error:', error);
-    res.status(500).json({ message: 'Failed to fetch suppliers by location' });
+    res.status(500).json({ message: 'Unable to load suppliers. Please refresh the page' });
   }
 };
