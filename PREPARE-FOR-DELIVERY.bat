@@ -22,7 +22,12 @@ pause
 cd /d "%~dp0"
 
 echo.
-echo  [1/4] Removing server node_modules...
+echo  [1/5] Stopping all Node.js processes first...
+taskkill /F /IM node.exe >nul 2>&1
+timeout /t 2 /nobreak >nul
+echo       All Node.js processes: STOPPED
+
+echo  [2/5] Removing server node_modules...
 if exist "server\node_modules" (
     rmdir /s /q "server\node_modules"
     echo       Server node_modules: REMOVED
@@ -30,7 +35,7 @@ if exist "server\node_modules" (
     echo       Server node_modules: Already clean
 )
 
-echo  [2/4] Removing client node_modules...
+echo  [3/5] Removing client node_modules...
 if exist "client\node_modules" (
     rmdir /s /q "client\node_modules"
     echo       Client node_modules: REMOVED
@@ -38,7 +43,7 @@ if exist "client\node_modules" (
     echo       Client node_modules: Already clean
 )
 
-echo  [3/4] Cleaning build artifacts...
+echo  [4/5] Cleaning build artifacts...
 if exist "client\dist" (
     rmdir /s /q "client\dist"
     echo       Client build folder: REMOVED
@@ -48,7 +53,7 @@ if exist "client\.vite" (
     echo       Vite cache: REMOVED
 )
 
-echo  [4/4] Verifying essential files...
+echo  [5/5] Verifying essential files...
 if exist "START-JOSEA-PRESENTATION.bat" (
     echo       START-JOSEA-PRESENTATION.bat: FOUND
 ) else (
