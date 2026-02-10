@@ -81,63 +81,37 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-screen bg-[#0a0a0c] flex items-center justify-center p-4 relative overflow-hidden font-sans antialiased">
-      
+    <div className="h-screen bg-[#0a0a0c] flex items-center justify-center p-6 relative overflow-hidden" style={{ fontFamily: '"Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif' }}>
+
       {/* Structural Background - Executive Atmosphere */}
       <div className="absolute inset-0 z-0">
         <div className="absolute top-[-10%] left-[-5%] w-[600px] h-[600px] bg-purple-900/10 rounded-full blur-[120px]" />
         <div className="absolute bottom-[-10%] right-[-5%] w-[600px] h-[600px] bg-indigo-900/10 rounded-full blur-[120px]" />
-        <div className="absolute inset-0 opacity-[0.02]" 
+        <div className="absolute inset-0 opacity-[0.02]"
              style={{ backgroundImage: `radial-gradient(#ffffff 1px, transparent 1px)`, backgroundSize: '40px 40px' }} />
       </div>
 
-      <motion.div 
-        initial={{ opacity: 0, y: 15 }} 
+      <motion.div
+        initial={{ opacity: 0, y: 15 }}
         animate={{ opacity: 1, y: 0 }}
-        className="relative z-10 w-full max-w-[480px]"
+        className="relative z-10 w-full max-w-[420px] flex flex-col h-full max-h-[680px] justify-between"
       >
-        {/* Enhanced Powered By Section - Top Position */}
-        <motion.div 
-          initial={{ opacity: 0, y: -20 }} 
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.2 }}
-          className="text-center mb-6"
-        >
-          <div className="inline-flex flex-col items-center bg-gradient-to-br from-purple-900/20 to-indigo-900/20 border border-purple-500/30 rounded-2xl px-8 py-4 backdrop-blur-xl shadow-2xl relative overflow-hidden">
-            {/* Animated glow effect */}
-            <div className="absolute inset-0 bg-gradient-to-r from-transparent via-purple-500/10 to-transparent animate-pulse" />
-            
-            <p className="text-[9px] font-bold text-slate-400 uppercase tracking-[0.3em] mb-1.5 relative z-10">
-              System Powered by
-            </p>
-            <p className="text-sm font-black text-transparent bg-clip-text bg-gradient-to-r from-purple-400 via-purple-300 to-indigo-400 uppercase italic tracking-wider relative z-10">
-              JOSEA <span className="text-slate-300 font-bold">SOFTWARE SOLUTIONS</span>
-            </p>
-            
-            {/* Decorative corner accents */}
-            <div className="absolute top-2 left-2 w-3 h-3 border-t-2 border-l-2 border-purple-500/40" />
-            <div className="absolute top-2 right-2 w-3 h-3 border-t-2 border-r-2 border-purple-500/40" />
-            <div className="absolute bottom-2 left-2 w-3 h-3 border-b-2 border-l-2 border-purple-500/40" />
-            <div className="absolute bottom-2 right-2 w-3 h-3 border-b-2 border-r-2 border-purple-500/40" />
-          </div>
-        </motion.div>
-
-        {/* Security Header - Below Powered By */}
-        <motion.div 
-          initial={{ opacity: 0 }} 
+        {/* Security Header - Top Position */}
+        <motion.div
+          initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
-          transition={{ delay: 0.4 }}
-          className="flex items-center justify-center gap-2 mb-8"
+          transition={{ delay: 0.2 }}
+          className="flex items-center justify-center gap-2 mb-4"
         >
-          <Shield className="w-4 h-4 text-emerald-500 animate-pulse" />
-          <span className="text-[10px] font-bold text-slate-500 uppercase tracking-[0.3em]">
+          <Shield className="w-3.5 h-3.5 text-emerald-500 animate-pulse" />
+          <span className="text-[9px] font-semibold text-slate-500 uppercase tracking-[0.25em]">
             Authorized Access Only
           </span>
         </motion.div>
 
         {/* The Card - Minimalist Glass with Scanner Effect */}
-        <div className="bg-white/[0.02] border border-white/[0.08] rounded-[2.5rem] p-12 backdrop-blur-2xl shadow-2xl relative overflow-hidden">
-          
+        <div className="bg-white/[0.02] border border-white/[0.08] rounded-3xl px-10 py-8 backdrop-blur-2xl shadow-2xl relative overflow-hidden">
+
           {/* Animated Scanner Effect */}
           <motion.div
             className="absolute inset-x-0 h-[2px] bg-gradient-to-r from-transparent via-purple-500 to-transparent opacity-50 blur-sm"
@@ -164,72 +138,74 @@ export default function Login() {
 
           <div className="relative z-10">
             {/* BRANDING */}
-            <div className="text-center mb-10">
-              <div className="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-br from-slate-100 to-slate-400 rounded-2xl mb-6 shadow-inner border border-white/20">
-                <Hexagon className="w-8 h-8 text-slate-900" />
-              </div>
-              <h1 className="text-4xl font-black text-white tracking-tighter uppercase italic">
+            <div className="text-center mb-7">
+              <h1 className="text-[2.5rem] font-black text-white tracking-tighter uppercase italic leading-none">
                 PRAM <span className="text-purple-500">AUTO</span>
               </h1>
-              <p className="text-[10px] font-bold text-slate-500 uppercase tracking-[0.5em] mt-2">
-                Bussiness Management System
+              <h2 className="text-xl font-black text-slate-300 tracking-tighter uppercase italic mt-1">
+                SPARES
+              </h2>
+              <p className="text-[9px] font-semibold text-slate-500 uppercase tracking-[0.4em] mt-2">
+                Business Management System
               </p>
             </div>
 
-            <form onSubmit={handleSubmit} className="space-y-6">
+            <form onSubmit={handleSubmit} className="space-y-4">
               <AnimatePresence>
                 {error && (
-                  <motion.div 
-                    initial={{ opacity: 0, height: 0 }} 
+                  <motion.div
+                    initial={{ opacity: 0, height: 0 }}
                     animate={{ opacity: 1, height: 'auto' }}
                     exit={{ opacity: 0, height: 0 }}
-                    className="bg-red-500/10 border border-red-500/20 p-4 rounded-xl flex items-center gap-3"
+                    className="bg-red-500/10 border border-red-500/20 p-3 rounded-lg flex items-center gap-2.5"
                   >
-                    <AlertCircle className="w-4 h-4 text-red-500 shrink-0" />
-                    <p className="text-[11px] font-bold text-red-200 uppercase tracking-wider leading-relaxed">{error}</p>
+                    <AlertCircle className="w-3.5 h-3.5 text-red-500 shrink-0" />
+                    <p className="text-[10px] font-semibold text-red-200 uppercase tracking-wide leading-relaxed">{error}</p>
                   </motion.div>
                 )}
               </AnimatePresence>
 
-              <div className="space-y-5">
+              <div className="space-y-4">
                 {/* EMAIL FIELD */}
-                <div className="space-y-2.5">
-                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Email Identifier</label>
+                <div className="space-y-2">
+                  <label className="text-[9px] font-semibold text-slate-400 uppercase tracking-[0.15em] ml-0.5">Email Identifier</label>
                   <div className="relative group">
-                    <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 group-focus-within:text-purple-500 transition-colors" />
+                    <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 group-focus-within:text-purple-500 transition-colors" />
                     <input
                       type="email"
                       value={email}
                       onChange={handleEmailChange}
                       required
                       placeholder="Enter your email address"
-                      className="w-full pl-11 pr-4 py-4 bg-white/[0.03] border border-white/[0.08] rounded-xl text-sm text-white focus:outline-none focus:border-purple-500/50 transition-all placeholder:text-slate-600 shadow-inner"
+                      className="w-full pl-10 pr-4 py-3 bg-white/[0.03] border border-white/[0.08] rounded-lg text-sm text-white focus:outline-none focus:border-purple-500/50 transition-all placeholder:text-slate-600 shadow-inner"
                       disabled={loading}
+                      style={{ fontFamily: 'inherit' }}
                     />
-                    {emailValid && <CheckCircle2 className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-emerald-500" />}
+                    {emailValid && <CheckCircle2 className="absolute right-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-emerald-500" />}
                   </div>
                 </div>
 
                 {/* PASSWORD FIELD */}
-                <div className="space-y-2.5">
-                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Secure Passkey</label>
+                <div className="space-y-2">
+                  <label className="text-[9px] font-semibold text-slate-400 uppercase tracking-[0.15em] ml-0.5">Secure Passkey</label>
                   <div className="relative group">
-                    <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 group-focus-within:text-purple-500 transition-colors" />
+                    <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 group-focus-within:text-purple-500 transition-colors" />
                     <input
                       type={showPassword ? "text" : "password"}
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
                       required
                       placeholder="••••••••••••"
-                      className="w-full pl-11 pr-12 py-4 bg-white/[0.03] border border-white/[0.08] rounded-xl text-sm text-white focus:outline-none focus:border-purple-500/50 transition-all placeholder:text-slate-600 shadow-inner"
+                      className="w-full pl-10 pr-11 py-3 bg-white/[0.03] border border-white/[0.08] rounded-lg text-sm text-white focus:outline-none focus:border-purple-500/50 transition-all placeholder:text-slate-600 shadow-inner"
                       disabled={loading}
+                      style={{ fontFamily: 'inherit' }}
                     />
                     <button
                       type="button"
                       onClick={() => setShowPassword(!showPassword)}
-                      className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500 hover:text-white transition-colors"
+                      className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-500 hover:text-white transition-colors"
                     >
-                      {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                      {showPassword ? <EyeOff size={15} /> : <Eye size={15} />}
                     </button>
                   </div>
                 </div>
@@ -239,7 +215,8 @@ export default function Login() {
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full bg-white text-black font-black py-4 rounded-xl text-xs uppercase tracking-[0.2em] flex items-center justify-center gap-2 hover:bg-slate-200 active:scale-[0.98] transition-all disabled:opacity-50 mt-4 shadow-xl"
+                className="w-full bg-white text-black font-bold py-3.5 rounded-lg text-[11px] uppercase tracking-[0.15em] flex items-center justify-center gap-2 hover:bg-slate-200 active:scale-[0.98] transition-all disabled:opacity-50 mt-5 shadow-xl"
+                style={{ fontFamily: 'inherit' }}
               >
                 {loading ? 'Authenticating...' : 'Sign In To Terminal'}
                 {!loading && <ChevronRight size={14} className="opacity-50" />}
@@ -248,13 +225,31 @@ export default function Login() {
           </div>
         </div>
 
-        {/* EXECUTIVE SIGNATURE - Bottom */}
-        <div className="mt-8 flex items-center justify-center border-t border-white/5 pt-6">
-          <div className="flex items-center gap-2">
-            <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse" />
-            <span className="text-[9px] font-bold text-slate-500 uppercase tracking-widest">System Online</span>
+        {/* Enhanced Powered By Section - Bottom Position */}
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.4 }}
+          className="text-center mt-4"
+        >
+          <div className="inline-flex flex-col items-center bg-gradient-to-br from-purple-900/15 to-indigo-900/15 border border-purple-500/20 rounded-xl px-5 py-2.5 backdrop-blur-xl shadow-lg relative overflow-hidden">
+            {/* Subtle glow effect */}
+            <div className="absolute inset-0 bg-gradient-to-r from-transparent via-purple-500/5 to-transparent" />
+
+            <p className="text-[7px] font-semibold text-slate-500 uppercase tracking-[0.25em] mb-0.5 relative z-10">
+              Powered by
+            </p>
+            <p className="text-[10px] font-bold text-transparent bg-clip-text bg-gradient-to-r from-purple-400 via-purple-300 to-indigo-400 uppercase tracking-wide relative z-10">
+              JOSEA <span className="text-slate-400 font-semibold">SOFTWARE SOLUTIONS</span>
+            </p>
+
+            {/* Minimal corner accents */}
+            <div className="absolute top-1.5 left-1.5 w-2 h-2 border-t border-l border-purple-500/30" />
+            <div className="absolute top-1.5 right-1.5 w-2 h-2 border-t border-r border-purple-500/30" />
+            <div className="absolute bottom-1.5 left-1.5 w-2 h-2 border-b border-l border-purple-500/30" />
+            <div className="absolute bottom-1.5 right-1.5 w-2 h-2 border-b border-r border-purple-500/30" />
           </div>
-        </div>
+        </motion.div>
       </motion.div>
     </div>
   );

@@ -275,12 +275,207 @@ async function main() {
   }
 
   console.log(`✅ All ${productsCreated} products created with Cloudinary images\n`);
+
+  // Get all created products and users for later use
+  const allProducts = await prisma.product.findMany();
+  const allUsers = await prisma.user.findMany();
+
+  // Create 30 Customers
+  console.log('👥 Creating 30 customers...');
+  const customerNames = [
+    'John Kamau', 'Mary Wanjiru', 'David Omondi', 'Grace Akinyi', 'Peter Mwangi',
+    'Lucy Njeri', 'James Otieno', 'Faith Wangari', 'Daniel Kipchoge', 'Alice Chebet',
+    'Michael Mutua', 'Jane Auma', 'Joseph Kariuki', 'Ann Moraa', 'Samuel Wafula',
+    'Rose Nduta', 'Patrick Maina', 'Nancy Nekesa', 'Francis Kimani', 'Margaret Adhiambo',
+    'Stephen Gitonga', 'Susan Wambui', 'George Okoth', 'Esther Nyambura', 'Anthony Onyango',
+    'Catherine Mukami', 'Vincent Koech', 'Beatrice Njoki', 'Robert Wesonga', 'Florence Wanjiku'
+  ];
+
+  const customers = [];
+  for (let i = 0; i < 30; i++) {
+    const customer = await prisma.customer.create({
+      data: {
+        name: customerNames[i],
+        phone: `+25471${String(2000000 + i).padStart(7, '0')}`,
+        totalSpent: 0,
+        totalDebt: 0,
+      },
+    });
+    customers.push(customer);
+  }
+  console.log(`✅ Created ${customers.length} customers\n`);
+
+  // Create 300 Suppliers
+  console.log('🏪 Creating 300 suppliers...');
+  const locations = ['NAIROBI_CBD', 'DUBAI', 'UGANDA', 'OTHER'];
+  const nairobiShops = [
+    'Muthurwa Auto Parts', 'Kirinyaga Road Motors', 'River Road Spares', 'Luthuli Avenue Auto',
+    'Tom Mboya Street Parts', 'Biashara Street Motors', 'Grogan Road Spares', 'Duruma Road Auto',
+    'Ronald Ngala Street Parts', 'Latema Road Motors', 'Accra Road Spares', 'Kenyatta Avenue Auto',
+    'Moi Avenue Parts', 'Muindi Mbingu Street', 'Haile Selassie Motors', 'Koinange Street Auto'
+  ];
+  const dubaiShops = [
+    'Al Aweer Auto Parts', 'Ras Al Khor Trading', 'Sharjah Auto Market', 'Dubai Auto Zone',
+    'Emirates Motor Parts', 'Al Quoz Industrial', 'Deira Auto Trading', 'Bur Dubai Motors'
+  ];
+  const ugandaShops = [
+    'Kampala Auto Spares', 'Wandegeya Motors', 'Ntinda Auto Parts', 'Nasser Road Trading',
+    'Nakivubo Motors', 'Kikuubo Auto Market', 'Owino Market Parts', 'Kalerwe Auto Zone'
+  ];
+  const otherShops = [
+    'Mombasa Auto Hub', 'Kisumu Motors Ltd', 'Nakuru Spares', 'Eldoret Auto Parts',
+    'Thika Road Motors', 'Machakos Auto Zone', 'Nyeri Parts Center', 'Meru Motor Spares'
+  ];
+
+  const contactPersons = [
+    'Ahmed Hassan', 'John Mwangi', 'David Ochieng', 'Mohammed Ali', 'Peter Kamau',
+    'James Otieno', 'Samuel Kiplagat', 'Joseph Njuguna', 'Anthony Wafula', 'Stephen Mutua',
+    'Michael Korir', 'Francis Kimani', 'Patrick Omondi', 'Vincent Cheruiyot', 'Robert Wanjala',
+    'George Kariuki', 'Daniel Rotich', 'Thomas Makau', 'Charles Wekesa', 'Paul Maina',
+    'Ibrahim Yusuf', 'Hassan Abdallah', 'Juma Rashid', 'Khalid Salim', 'Omar Farah'
+  ];
+
+  const specialtiesOptions = [
+    ['Engine Parts', 'Transmission'], ['Filters', 'Belts'], ['Suspension', 'Brakes'],
+    ['Electrical', 'Cooling'], ['Steering', 'Gaskets'], ['Engine Parts', 'Filters'],
+    ['Brakes', 'Suspension'], ['Electrical', 'Belts'], ['Transmission', 'Clutch'],
+    ['Cooling', 'Gaskets'], ['Engine Parts', 'Brakes'], ['Filters', 'Suspension']
+  ];
+
+  const suppliers = [];
+  for (let i = 0; i < 300; i++) {
+    let location, branchName;
+
+    // Distribute suppliers: 150 Nairobi, 50 Dubai, 50 Uganda, 50 Other
+    if (i < 150) {
+      location = 'NAIROBI_CBD';
+      branchName = nairobiShops[i % nairobiShops.length] + (i >= nairobiShops.length ? ` Branch ${Math.floor(i / nairobiShops.length)}` : '');
+    } else if (i < 200) {
+      location = 'DUBAI';
+      branchName = dubaiShops[(i - 150) % dubaiShops.length] + (i >= 150 + dubaiShops.length ? ` Shop ${Math.floor((i - 150) / dubaiShops.length)}` : '');
+    } else if (i < 250) {
+      location = 'UGANDA';
+      branchName = ugandaShops[(i - 200) % ugandaShops.length] + (i >= 200 + ugandaShops.length ? ` Branch ${Math.floor((i - 200) / ugandaShops.length)}` : '');
+    } else {
+      location = 'OTHER';
+      branchName = otherShops[(i - 250) % otherShops.length] + (i >= 250 + otherShops.length ? ` Outlet ${Math.floor((i - 250) / otherShops.length)}` : '');
+    }
+
+    const supplier = await prisma.supplier.create({
+      data: {
+        name: branchName,
+        location: location,
+        branchName: branchName,
+        contactPerson: contactPersons[i % contactPersons.length],
+        phone: `+25472${String(3000000 + i).padStart(7, '0')}`,
+        email: `${branchName.toLowerCase().replace(/\s+/g, '')}${i}@supplier.com`,
+        specialties: specialtiesOptions[i % specialtiesOptions.length],
+        isActive: true,
+      },
+    });
+    suppliers.push(supplier);
+
+    if ((i + 1) % 50 === 0) {
+      console.log(`   ✅ Created ${i + 1}/300 suppliers...`);
+    }
+  }
+  console.log(`✅ All ${suppliers.length} suppliers created\n`);
+
+  // Create 30 Sales
+  console.log('💰 Creating 30 sales...');
+  const receiptCounter = 1000;
+
+  for (let i = 0; i < 30; i++) {
+    const customer = customers[i % customers.length];
+    const branch = branches[i % branches.length];
+    const user = allUsers.find(u => u.branchId === branch.id) || allUsers[0];
+
+    // Random 2-5 items per sale
+    const numItems = Math.floor(Math.random() * 4) + 2;
+    const saleItems = [];
+    let subtotal = 0;
+
+    // Select random products for this sale
+    const selectedProducts = [];
+    for (let j = 0; j < numItems; j++) {
+      const product = allProducts[Math.floor(Math.random() * allProducts.length)];
+      const quantity = Math.floor(Math.random() * 3) + 1; // 1-3 units
+      const unitPrice = parseFloat(product.sellingPrice);
+      const itemTotal = unitPrice * quantity;
+
+      selectedProducts.push({
+        productId: product.id,
+        quantity: quantity,
+        unitPrice: unitPrice,
+        total: itemTotal,
+      });
+
+      subtotal += itemTotal;
+    }
+
+    // Random discount 0-10%
+    const discountPercent = Math.random() < 0.3 ? Math.floor(Math.random() * 10) : 0;
+    const discount = (subtotal * discountPercent) / 100;
+    const total = subtotal - discount;
+
+    // Determine if credit sale (30% chance)
+    const isCredit = Math.random() < 0.3;
+
+    const sale = await prisma.sale.create({
+      data: {
+        receiptNumber: `RCP-${String(receiptCounter + i).padStart(6, '0')}`,
+        branchId: branch.id,
+        userId: user.id,
+        customerId: customer.id,
+        customerName: customer.name,
+        customerPhone: customer.phone,
+        subtotal: subtotal,
+        discount: discount,
+        total: total,
+        isCredit: isCredit,
+        creditStatus: isCredit ? 'PENDING' : null,
+        isWalkIn: false,
+        createdAt: new Date(Date.now() - Math.floor(Math.random() * 30 * 24 * 60 * 60 * 1000)), // Random date within last 30 days
+        items: {
+          create: selectedProducts,
+        },
+        payments: isCredit ? undefined : {
+          create: [
+            {
+              method: Math.random() < 0.6 ? 'MPESA' : 'CASH',
+              amount: total,
+              reference: Math.random() < 0.6 ? `MPE${String(Math.floor(Math.random() * 10000000000)).padStart(10, '0')}` : null,
+            },
+          ],
+        },
+      },
+    });
+
+    // Update customer stats
+    await prisma.customer.update({
+      where: { id: customer.id },
+      data: {
+        totalSpent: { increment: isCredit ? 0 : total },
+        totalDebt: { increment: isCredit ? total : 0 },
+        lastVisitAt: sale.createdAt,
+      },
+    });
+
+    if ((i + 1) % 10 === 0) {
+      console.log(`   ✅ Created ${i + 1}/30 sales...`);
+    }
+  }
+  console.log(`✅ All 30 sales created\n`);
+
   console.log('🎉 Seeding complete!');
   console.log('\n📊 Summary:');
   console.log(`   🏢 Branches: ${branches.length}`);
   console.log(`   👥 Users: 6`);
   console.log(`   📦 Products: ${productsCreated}`);
   console.log(`   📸 All images using Cloudinary URLs`);
+  console.log(`   👨‍💼 Customers: ${customers.length}`);
+  console.log(`   🏪 Suppliers: ${suppliers.length}`);
+  console.log(`   💰 Sales: 30`);
 }
 
 main()

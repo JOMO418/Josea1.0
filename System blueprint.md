@@ -1406,4 +1406,4 @@ This codebase is **production-ready** with a solid architectural foundation. The
 **Next Review:** Before any major feature additions or refactoring
 
 $env:CLAUDE_CODE_GIT_BASH_PATH = "C:\Users\Julie\AppData\Local\Programs\Git\bin\bash.exe"
-claude
+claude --model sonnet
