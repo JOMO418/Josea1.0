@@ -31,9 +31,9 @@ export default function AdminRoute() {
     }
   }, [isAuthorized]);
 
-  // Redirect managers to their dashboard
+  // Redirect managers to their dashboard (POS)
   if (!isAuthorized) {
-    return <Navigate to="/" replace />;
+    return <Navigate to="/pos" replace />;
   }
 
   // Render admin routes

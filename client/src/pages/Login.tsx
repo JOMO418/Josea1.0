@@ -1,4 +1,4 @@
-import { useState, FormEvent } from 'react';
+import { useState, FormEvent, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { Lock, Mail, AlertCircle, Shield, ChevronRight, Eye, EyeOff, CheckCircle2 } from 'lucide-react';
@@ -8,7 +8,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 
 export default function Login() {
   const navigate = useNavigate();
-  const { setAuth, setUser, setBranch, setDrawerOpen } = useStore();
+  const { setAuth, setUser, setBranch, setDrawerOpen, isAuthenticated, userRole } = useStore();
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -16,6 +16,17 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [emailValid, setEmailValid] = useState(false);
+
+  // Redirect authenticated users to their appropriate dashboard
+  useEffect(() => {
+    if (isAuthenticated) {
+      if (userRole === 'ADMIN' || userRole === 'OWNER') {
+        navigate('/admin/command-center', { replace: true });
+      } else {
+        navigate('/pos', { replace: true });
+      }
+    }
+  }, [isAuthenticated, userRole, navigate]);
 
   const handleEmailChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;

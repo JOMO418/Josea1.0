@@ -40,6 +40,24 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+// ===== ROOT REDIRECT COMPONENT =====
+// Redirects users based on authentication status
+function RootRedirect() {
+  const isAuthenticated = useStore((state) => state.isAuthenticated);
+  const userRole = useStore((state) => state.userRole);
+
+  if (!isAuthenticated) {
+    return <Navigate to="/login" replace />;
+  }
+
+  // Redirect authenticated users to their appropriate dashboard
+  if (userRole === 'ADMIN' || userRole === 'OWNER') {
+    return <Navigate to="/admin/command-center" replace />;
+  }
+
+  return <Navigate to="/pos" replace />;
+}
+
 // ===== MAIN APP =====
 function App() {
   return (
@@ -61,19 +79,21 @@ function App() {
       />
 
       <Routes>
+        {/* Root Route - Smart Redirect Based on Auth Status */}
+        <Route index element={<RootRedirect />} />
+
         {/* Public Routes */}
         <Route path="/login" element={<Login />} />
 
         {/* Protected Application Routes */}
         <Route
-          path="/"
           element={
             <ProtectedRoute>
               <MainLayout />
             </ProtectedRoute>
           }
         >
-          <Route index element={<Dashboard />} />
+          <Route path="dashboard" element={<Dashboard />} />
           <Route path="pos" element={<POS />} />
           <Route path="sales" element={<Sales />} />
           <Route path="inventory" element={<Inventory />} />
@@ -84,9 +104,6 @@ function App() {
           {/* Future Routes */}
           <Route path="transfers" element={<div className="p-8 text-white">Transfers (Coming Soon)</div>} />
           <Route path="credits" element={<div className="p-8 text-white">Credits (Coming Soon)</div>} />
-
-          {/* 404 Redirect */}
-          <Route path="*" element={<Navigate to="/" replace />} />
         </Route>
 
         {/* Admin Routes - Protected by Role-Based Access Control */}
@@ -109,6 +126,9 @@ function App() {
             <Route path="*" element={<ComingSoon />} />
           </Route>
         </Route>
+
+        {/* Global Catch-All - Redirect to root which handles auth-based routing */}
+        <Route path="*" element={<RootRedirect />} />
       </Routes>
     </BrowserRouter>
   );
