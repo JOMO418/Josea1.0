@@ -1,7 +1,7 @@
 import { useState, FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
-import { Lock, Mail, AlertCircle, Shield, ChevronRight, Eye, EyeOff, CheckCircle2, Hexagon } from 'lucide-react';
+import { Lock, Mail, AlertCircle, Shield, ChevronRight, Eye, EyeOff, CheckCircle2 } from 'lucide-react';
 import { api } from '../api/axios';
 import { useStore } from '../store/useStore';
 import { motion, AnimatePresence } from 'framer-motion';
