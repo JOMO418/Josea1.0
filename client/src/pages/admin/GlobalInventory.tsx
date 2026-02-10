@@ -1141,8 +1141,12 @@ export default function GlobalInventory() {
         duration: 4000,
       });
 
+      // CRITICAL FIX: Close modal and clear selected product to force fresh data on next open
       setIsModalOpen(false);
-      fetchProducts();
+      setSelectedProduct(null);
+
+      // Refresh products list with updated data
+      await fetchProducts();
     } catch (err: any) {
       console.error('❌ Product update failed:', err);
       console.error('Error response:', err.response?.data);
@@ -1543,7 +1547,10 @@ export default function GlobalInventory() {
         {isModalOpen && (
           <MasterControllerModal
             isOpen={isModalOpen}
-            onClose={() => setIsModalOpen(false)}
+            onClose={() => {
+              setIsModalOpen(false);
+              setSelectedProduct(null); // Clear selected product when closing modal
+            }}
             product={selectedProduct}
             branches={branches}
             suppliers={suppliers}
